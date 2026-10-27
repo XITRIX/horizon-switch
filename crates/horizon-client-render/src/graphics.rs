@@ -783,6 +783,9 @@ pub fn lod_distance_capped(distance: u32, info: &wgpu::AdapterInfo) -> u32 {
 impl Graphics {
     /// `lod_distance` as far terrain uses it on this adapter.
     pub fn lod_distance_on(&self, info: &wgpu::AdapterInfo) -> u32 {
+        if cfg!(target_os = "horizon") {
+            return 0;
+        }
         lod_distance_capped(self.lod_distance, info)
     }
     /// Whether the selected packs leave vanilla's block models in place.

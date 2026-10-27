@@ -13,6 +13,7 @@ members = [
     "crates/horizon-heartbeat",
 
     "crates/horizon-core",
+    "crates/horizon-nx",
     "crates/horizon-platform",
     "crates/horizon-addresses",
     "crates/horizon-mod-runtime",
@@ -110,6 +111,15 @@ large_enum_variant = "allow"
 # Drop this and the folder once a wgpu release has these fixes.
 [patch.crates-io]
 wgpu-hal = { path = "third_party/wgpu-hal" }
+# Nintendo Switch: newlib/aarch64 definitions (made by switch/patches/patch_libc.py).
+libc = { path = "switch/patches/libc-0.2.191" }
+getrandom02 = { package = "getrandom", path = "switch/patches/getrandom-0.2.17" }
+getrandom = { path = "switch/patches/getrandom-0.3.4" }
+winit = { path = "switch/patches/winit-0.30.13" }
+ring = { path = "switch/patches/ring-0.17.14" }
+wgpu = { path = "switch/patches/wgpu-30.0.1" }
+wgpu-core = { path = "switch/patches/wgpu-core-30.0.1" }
+wgpu-core-deps-windows-linux-android = { path = "switch/patches/wgpu-core-deps-windows-linux-android-30.0.1" }
 # naga 30.0.1, with the fixes to its GLSL frontend that shader packs need (THIRD_PARTY_NOTICES.md).
 naga = { path = "third_party/naga" }
 # libmimalloc-sys 0.1.49 whose mimalloc v3 counts bits without POPCNT when MSVC builds it: the

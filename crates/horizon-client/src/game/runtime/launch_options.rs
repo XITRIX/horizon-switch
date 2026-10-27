@@ -180,6 +180,19 @@ impl Options {
     pub(super) fn from_launch(launch: LaunchArguments) -> Result<Option<Self>> {
         let installation_side = launch.installation_side();
         let LaunchArguments { context, rest } = launch;
+        #[cfg(target_os = "horizon")]
+        let sibling = {
+            let home = Path::new(horizon_client::logging::SWITCH_HOME);
+            let folder = home.join("resources");
+            match horizon_nx::romfs::mount(&home.join("resources.romfs"), "hres") {
+                Some(root) => root,
+                None => {
+                    horizon_client::logging::unpack_switch_resources(&folder)?;
+                    folder
+                }
+            }
+        };
+        #[cfg(not(target_os = "horizon"))]
         let sibling = std::env::current_exe()?
             .parent()
             .ok_or("missing executable directory")?
@@ -190,7 +203,7 @@ impl Options {
             } else {
                 std::path::Path::new(".local/horizon-client").join(horizon_core::VANILLA_VERSION)
             },
-            distance: 12,
+            distance: if cfg!(target_os = "horizon") { 6 } else { 12 },
             distance_override: None,
             seed: 0,
             developer_single_player: false,

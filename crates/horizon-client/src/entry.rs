@@ -26,9 +26,19 @@ impl Startup {
 pub fn prepare() -> Startup {
     horizon_mod_package::holder::enter();
     let result: crate::Result<_> = (|| {
+        #[cfg(target_os = "horizon")]
+        let launch = {
+            let home = std::path::Path::new(logging::SWITCH_HOME);
+            std::fs::create_dir_all(home)?;
+            std::env::set_current_dir(home)?;
+            LaunchArguments::parse(std::env::args().skip(1), home, home, None)?
+        };
+        #[cfg(not(target_os = "horizon"))]
+        let launch = {
         let mut command = std::process::Command::new(std::env::current_exe()?);
         command.args(std::env::args_os().skip(1));
-        let launch = LaunchArguments::for_command(&command)?;
+            LaunchArguments::for_command(&command)?
+        };
         let options = game::Options::validate(launch.clone())?;
         Ok((launch, options))
     })();
@@ -151,6 +161,12 @@ pub fn start<G>(
     );
     // The log's first line names the build, so a bug report that carries the log says which one it was.
     log::info!("Horizon {}", crash::version());
+    #[cfg(target_os = "horizon")]
+    {
+        let (total, used) = horizon_nx::memory::usage();
+        log::info!("Horizon: Switch build {}, memory {} MiB of {} MiB used",
+            option_env!("NX_BUILD").unwrap_or("unknown"), used >> 20, total >> 20);
+    }
     // Mods' startup bars and lines (`RegistrationContext::progress`), before they register.
     game::startup_progress::install(side == "server");
     // Mod loading emits refusals; both client and dedicated logs must exist first.

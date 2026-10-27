@@ -150,8 +150,12 @@ pub(super) async fn open_adapter(
     // (`MC_GL_KHR_shader_subgroup_*`); storage buffers in vertex shaders, clearing and
     // atomics on images: their buffers and images. Filtering 32-bit float textures: shader
     // packs' RGBA32F buffers, which GL filters and mipmaps. Count draws: GPU culling's (`gpu_culling`).
-    let features = timing::GpuTimer::features(adapter)
-        | pack_timing::PassTiming::features(adapter)
+    let timers = if cfg!(target_os = "horizon") {
+        wgpu::Features::empty()
+    } else {
+        timing::GpuTimer::features(adapter) | pack_timing::PassTiming::features(adapter)
+    };
+    let features = timers
         | cull::Cull::features(adapter)
         | oit::features(adapter)
         | super::rt::query::features(adapter, needs.rays)

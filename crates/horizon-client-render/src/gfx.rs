@@ -4188,7 +4188,7 @@ impl Renderer {
                     &sprite_constants,
                 )
             });
-        let multi_draw = device
+        let multi_draw = !cfg!(target_os = "horizon") && device
             .features()
             .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
             && indirect_execution;

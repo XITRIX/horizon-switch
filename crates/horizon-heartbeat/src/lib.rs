@@ -47,6 +47,9 @@ impl Hooks for Heartbeat {
 }
 
 fn start(version: &str) {
+    if cfg!(target_os = "horizon") {
+        return;
+    }
     if PINGER.get().is_some() || std::env::var_os("HORIZON_NO_HEARTBEAT").is_some() {
         return;
     }

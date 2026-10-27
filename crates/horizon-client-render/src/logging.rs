@@ -27,6 +27,10 @@ const RECENT: usize = 50;
 const FLOOD_LINES: u32 = 100;
 const FLOOD_WINDOW: Duration = Duration::from_secs(60);
 
+/// The game folder on the Nintendo Switch SD card.
+#[cfg(target_os = "horizon")]
+pub const SWITCH_HOME: &str = "sdmc:/switch/horizon";
+
 /// The platform data folder, shared with launcher command preparation.
 pub fn data_dir() -> PathBuf {
     horizon_mod_package::selection::data_dir_with(|key| std::env::var_os(key))
@@ -97,6 +101,9 @@ pub fn game_home() -> PathBuf {
     }
     match std::env::var_os("HORIZON_HOME").filter(|h| !h.is_empty()) {
         Some(h) => PathBuf::from(h),
+        #[cfg(target_os = "horizon")]
+        None => PathBuf::from(SWITCH_HOME),
+        #[cfg(not(target_os = "horizon"))]
         None => data_dir().join("horizon"),
     }
 }
@@ -231,6 +238,8 @@ pub fn open_latest(dir: &Path) -> io::Result<Option<Latest>> {
         .create(true)
         .truncate(false)
         .open(dir.join(".lock"))?;
+    // The Switch has no file locks, and runs one program at a time.
+    #[cfg(not(target_os = "horizon"))]
     match lock.try_lock() {
         Ok(()) => {}
         Err(fs::TryLockError::WouldBlock) => return Ok(None),
@@ -985,4 +994,68 @@ mod tests {
         );
         let _ = fs::remove_dir_all(&home);
     }
+}
+
+/// The Switch: the prepared resources travel to the SD card as one `resources.zip` (copying
+/// 28,000 files over MTP takes hours); the first start unpacks it into `resources/` and deletes
+/// it, showing its progress on libnx's console. A start cut short resumes: files already there
+/// with their full size are kept, and `horizon-resources.json` is written last.
+#[cfg(target_os = "horizon")]
+pub fn unpack_switch_resources(resources: &Path) -> std::io::Result<()> {
+    let archive = resources.with_extension("zip");
+    if resources.join("horizon-resources.json").is_file() || !archive.is_file() {
+        return Ok(());
+    }
+    log::info!("Horizon: unpacking {} into {}", archive.display(), resources.display());
+    let other = |e: zip::result::ZipError| std::io::Error::other(e.to_string());
+    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(std::fs::File::open(&archive)?))
+        .map_err(other)?;
+    let mut console = horizon_nx::console::Console::open();
+    let total = zip.len();
+    let mut shown = usize::MAX;
+    let mut last = None;
+    for i in 0..total {
+        let percent = i * 100 / total.max(1);
+        if percent != shown {
+            shown = percent;
+            let text = format!(
+                "\x1b[2J\x1b[10;8HHorizon\x1b[12;8HFirst start: unpacking the game's resources\x1b[14;8H{percent:3}%  ({i} of {total} files)\x1b[16;8HThis happens once. Please keep the console on.",
+            );
+            if !console.show(&text) {
+                return Err(std::io::Error::other("closed while unpacking"));
+            }
+        }
+        let mut entry = zip.by_index(i).map_err(other)?;
+        let Some(name) = entry.enclosed_name() else { continue };
+        let out = resources.join(name);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out)?;
+            continue;
+        }
+        if out.file_name().is_some_and(|n| n == "horizon-resources.json") {
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes)?;
+            last = Some((out, bytes));
+            continue;
+        }
+        if std::fs::metadata(&out).is_ok_and(|m| m.len() == entry.size()) {
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut file = std::io::BufWriter::with_capacity(1 << 16, std::fs::File::create(&out)?);
+        std::io::copy(&mut entry, &mut file)?;
+    }
+    if let Some((out, bytes)) = last {
+        std::fs::write(out, bytes)?;
+    }
+    // The archive must be closed before FAT lets it go.
+    drop(zip);
+    drop(console);
+    if let Err(e) = std::fs::remove_file(&archive) {
+        log::warn!("Horizon: could not delete {}: {e}", archive.display());
+    }
+    log::info!("Horizon: resources unpacked");
+    Ok(())
 }

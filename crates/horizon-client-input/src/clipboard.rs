@@ -3,6 +3,8 @@
 //! `isCopy`, `isPaste` and `isCut`, `StringUtil.filterText` and
 //! `ChatFormatting.stripFormatting`.
 
+#[cfg(target_os = "horizon")]
+use arboard_nx as arboard;
 use std::cell::{RefCell, RefMut};
 use winit::keyboard::{Key, KeyCode, PhysicalKey};
 

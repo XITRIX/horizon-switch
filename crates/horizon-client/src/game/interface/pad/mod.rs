@@ -54,6 +54,8 @@ pub(super) struct Pads {
     /// The real controllers and the DualSense's output.
     #[cfg(feature = "controllers")]
     devices: hardware::Devices,
+    #[cfg(target_os = "horizon")]
+    switch_pad: switch::Devices,
     /// The virtual pad of `horizon-ctl pad`.
     injected: PadState,
     /// The virtual pad was in use at the last poll.
@@ -142,6 +144,8 @@ struct Context {
 
 mod capture;
 mod guide;
+#[cfg(target_os = "horizon")]
+mod switch;
 #[cfg(feature = "controllers")]
 mod hardware;
 #[cfg(test)]
@@ -200,10 +204,14 @@ pub(in crate::game) enum PadEvent {
 #[cfg(not(feature = "controllers"))]
 mod hardware {
     use super::{super::Game, Pads};
-    use horizon_client::gamepad::{PadState, Pulse, Rumble};
+    use horizon_client::gamepad::PadState;
+    #[cfg(not(target_os = "horizon"))]
+    use horizon_client::gamepad::{Pulse, Rumble};
+    #[cfg(not(target_os = "horizon"))]
     use serde_json::{Value, json};
 
     impl Pads {
+        #[cfg(not(target_os = "horizon"))]
         pub(super) fn read(&mut self) -> PadState {
             PadState::default()
         }
@@ -257,10 +265,15 @@ mod hardware {
     }
 
     impl Game<'_> {
+        #[cfg(not(target_os = "horizon"))]
         pub(super) fn pad_output_off(&mut self) {}
+        #[cfg(not(target_os = "horizon"))]
         pub(super) fn pad_output_frame(&mut self) {}
+        #[cfg(not(target_os = "horizon"))]
         pub(in crate::game) fn pad_close_output(&mut self) {}
+        #[cfg(not(target_os = "horizon"))]
         pub(super) fn pad_vibrate(&mut self, _: Rumble, _: Pulse) {}
+        #[cfg(not(target_os = "horizon"))]
         pub(super) fn pad_devices_status(&self) -> Value {
             json!({ "backend": false, "controllers": [] })
         }

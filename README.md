@@ -5,6 +5,8 @@
   </picture>
 </p>
 
+> **Nintendo Switch:** this fork adds an unofficial Switch homebrew port. See [switch/README.md](switch/README.md) ([по-русски](switch/README.ru.md)).
+
 <p align="center">
   <b>Minecraft: Java Edition 26.3, rewritten from scratch in Rust.</b><br>
   It opens your worlds, generates the same terrain and plays by the same rules, without Java.
