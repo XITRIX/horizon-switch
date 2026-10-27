@@ -1801,6 +1801,8 @@ pub struct OptionsUi {
     language_choice: Option<String>,
     language_search: ui::EditBox,
     pub(crate) settings_search: ui::EditBox,
+    skin_name: ui::EditBox,
+    skin_keyboard: bool,
     /// Browse mods: the registry's projects, filled by the game.
     pub mod_browser: crate::mod_browser::ModBrowser,
     /// The project whose page is open (`Page::ModProject`).
@@ -1927,6 +1929,8 @@ impl Default for OptionsUi {
             language_choice: None,
             language_search: search,
             settings_search,
+            skin_name: ui::EditBox::new(0.0, 0.0, 150.0, 15.0),
+            skin_keyboard: false,
             mod_browser: Default::default(),
             mod_project: String::new(),
             mods_note: None,
@@ -2287,6 +2291,14 @@ impl OptionsUi {
                 Page::Video | Page::Controls | Page::KeyBinds | Page::ModBrowser
             )
     }
+    pub fn take_skin_keyboard(&mut self) -> bool {
+        if self.page() != Page::Skin || !std::mem::take(&mut self.skin_keyboard) {
+            return false;
+        }
+        self.skin_name.focused = true;
+        true
+    }
+
     pub fn page(&self) -> Page {
         *self.stack.last().unwrap_or(&Page::Main)
     }
@@ -2418,6 +2430,14 @@ impl OptionsUi {
         ) {
             self.settings_search.set_value("");
             self.settings_search.focused = false;
+        }
+        if page == Page::Skin {
+            if let Ok(dir) = std::env::current_dir() {
+                crate::skin_names::load(&dir);
+            }
+            self.skin_name.set_value(&crate::skin_names::name());
+            self.skin_name.focused = false;
+            self.skin_keyboard = true;
         }
         if page == Page::Language {
             self.language_choice = None;
@@ -3152,6 +3172,15 @@ impl OptionsUi {
         drag: bool,
         right: bool,
     ) -> Vec<Event> {
+        if self.page() == Page::Skin && !drag && !right && self.resource_error.is_none() {
+            let field = &mut self.skin_name;
+            field.focused = ui::hovered((x, y), field.x, field.y, field.width, field.height);
+            if field.focused {
+                field.click(atlas, x, false, false);
+                self.skin_keyboard = true;
+                return vec![Event::ButtonClick];
+            }
+        }
         if self.resource_error.is_some() {
             if !drag
                 && !right
@@ -3987,7 +4016,10 @@ impl OptionsUi {
             p.type_text(&crate::screen_draw::Measure(&atlas.font), text);
             return;
         }
-        if self.page() == Page::Language {
+        if self.page() == Page::Skin && self.skin_name.focused {
+            self.skin_name.insert_text(text);
+            crate::skin_names::set_name(&self.skin_name.value);
+        } else if self.page() == Page::Language {
             self.language_search.insert_text(text);
             self.scroll = 0.0;
             self.relayout();
@@ -4027,6 +4059,11 @@ impl OptionsUi {
         {
             let m = crate::screen_draw::Measure(&atlas.font);
             return p.shortcut(&m, shortcut, clipboard);
+        }
+        if self.page() == Page::Skin && self.skin_name.focused {
+            self.skin_name.shortcut(shortcut, clipboard);
+            crate::skin_names::set_name(&self.skin_name.value);
+            return true;
         }
         if self.page() == Page::Language {
             if self.language_search.shortcut(shortcut, clipboard) {

@@ -1424,6 +1424,7 @@ fn http_get(url: &str) -> Option<Vec<u8>> {
         .build()
         .get(url)
         .call()
+        .map_err(|e| log::warn!("Horizon: skin download: {url}: {e}"))
         .ok()?;
     let mut body = Vec::new();
     response

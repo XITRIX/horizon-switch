@@ -307,6 +307,11 @@ impl OptionsUi {
         let page = self.page();
         let in_world = self.in_world;
         let (widgets, top, bottom, content) = layout.parts();
+        if page == Page::Skin {
+            self.skin_name.x = w / 2.0 - 75.0;
+            self.skin_name.y = h - 52.0;
+            self.skin_name.draw(batch, atlas, None);
+        }
         let list = bottom > top;
         let visible = |wd: &Widget| !wd.list || (wd.y < bottom && wd.y + wd.h > top);
         // The list's narration: the language list is an ObjectSelectionList,

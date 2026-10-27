@@ -130,6 +130,7 @@ pub mod net;
 pub mod nether_portal;
 pub mod no_resources;
 pub mod offline_name;
+pub use horizon_client_render::skin_names;
 pub mod old_world;
 pub mod osk;
 pub mod patrol;

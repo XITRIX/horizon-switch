@@ -477,6 +477,10 @@ impl Game<'_> {
         let player = auth
             .as_ref()
             .map_or_else(|| self.options.player_name(), |a| a.name.clone());
+        if let Ok(dir) = std::env::current_dir() {
+            horizon_client::skin_names::load(&dir);
+        }
+        horizon_client::skin_names::set_owner(&player);
         let new_world = create.is_some();
         let rule_registry = create.map_or_else(
             || Arc::new(crate::game::api_values::game_rule_registry()),

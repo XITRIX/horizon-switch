@@ -1165,7 +1165,7 @@ fn serve_login(
                     .owner_profile
                     .as_ref()
                     .map(|profile| profile.properties().to_vec())
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| crate::skin_names::login_properties(&name));
                 (owner_uuid, properties)
             }
             None => (offline_uuid(&hello.name), Vec::new()),
