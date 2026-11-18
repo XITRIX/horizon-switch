@@ -5,6 +5,15 @@ use crate::keybinds::KeyBinds;
 use crate::options_file::{OptionsFile, V};
 use std::{fs, path::Path};
 
+#[cfg(target_os = "horizon")]
+pub fn switch_resolution(file: &OptionsFile) -> [u32; 2] {
+    if file.int("switchResolution") == 1 {
+        [1920, 1080]
+    } else {
+        [1280, 720]
+    }
+}
+
 /// SoundSource names in vanilla order.
 pub const SOUND_SOURCES: [&str; 11] = [
     "master", "music", "record", "weather", "block", "hostile", "neutral", "player", "ambient",

@@ -43,8 +43,11 @@ fn main() {
             let (total, used) = horizon_nx::memory::usage();
             log::info!("Horizon: memory {} MB, {} MB used", total >> 20, used >> 20);
             log::info!("Horizon: {} CPU cores", std::thread::available_parallelism().map_or(0, |n| n.get()));
-            if !horizon_nx::net_init() {
-                log::warn!("Horizon: no network: skins by nickname stay default");
+            match horizon_nx::net_init() {
+                Ok(()) => log::info!("Horizon: BSD sockets and DNS ready"),
+                Err(result) => {
+                    log::warn!("Horizon: network initialization failed (0x{result:08x})");
+                }
             }
         }
         crash::install(home.clone(), side);
@@ -68,5 +71,5 @@ fn main() {
     }
     logging::flush();
     #[cfg(target_os = "horizon")]
-    horizon_nx::exit_now();
+    horizon_nx::exit_successfully();
 }

@@ -6,7 +6,7 @@
 //! the world's options) with [`Integrated::call`], as vanilla's client calls
 //! into its `IntegratedServer`.
 //!
-//! On by default. `--in-frame` (or `--no-server-thread`, or
+//! On by default except on Switch 2. `--in-frame` (or `--no-server-thread`, or
 //! `HORIZON_SERVER_THREAD=0`) runs the world in the frame instead, the
 //! escape hatch. LAN guests and dedicated servers use the same code either
 //! way.

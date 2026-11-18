@@ -819,6 +819,8 @@ impl Game<'_> {
                     name,
                     uuid,
                 } => {
+                    #[cfg(target_os = "horizon")]
+                    log::info!("Horizon: world configuration received");
                     self.set_registries(registries);
                     self.extras_joined();
                     // handleLogin: the level loading screen replaces any dialog.
@@ -1582,6 +1584,8 @@ impl Game<'_> {
                 self.debug_charts.ping.log(delay);
             }
             C::Login(p) => {
+                #[cfg(target_os = "horizon")]
+                log::info!("Horizon: applying world login");
                 self.level.hardcore = p.hardcore;
                 if let Some(r) = self.remote.as_mut() {
                     r.online_mode = p.online_mode;
@@ -3050,6 +3054,8 @@ impl Game<'_> {
                 self.clock.reset();
                 self.apply_remote_health();
                 self.apply_remote_abilities();
+                #[cfg(target_os = "horizon")]
+                log::info!("Horizon: client player ready");
             }
         }
         self.previous_position = position;

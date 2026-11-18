@@ -86,6 +86,37 @@ switch/scripts/make-nsp.sh ~/switch/prod.keys            # switch/build/Horizon.
 
 The desktop build is unchanged: nothing under `switch/` is used unless these scripts run.
 
+## Switch 2 with kaiHEN
+
+Install devkitA64, switch-tools, switch-libexpat, switch-zlib, switch-zstd and the Switch 2 packages for libounce and OunceVK. See the [Ounce Devkit setup](https://github.com/ouncebrew/ounce-devkit).
+
+From the repository root, build the NRO:
+
+```bash
+rustup toolchain install nightly-2026-10-26 --profile minimal --component rust-src
+switch/scripts/build-switch2.sh
+```
+
+Copy `switch/build/switch2/Horizon.nro` to `sdmc:/switch/horizon/Horizon.nro`. On the computer, prepare your own Minecraft Java Edition 26.3 resources using JDK 25, the official launcher installation, and the matching server JAR. Import the sounds before packing them if you want to test audio:
+
+```bash
+cargo run --release -p horizon-prepare -- --prepare --server-jar ~/Downloads/server.jar
+cargo run --release -p horizon-prepare -- sounds
+switch/scripts/make-romfs.sh .local/horizon-client/26.3 switch/build/switch2/resources.romfs
+```
+
+With ImageMagick installed, building after resource preparation embeds the Minecraft title logo from the local game assets as the NRO icon.
+
+Copy `resources.romfs` to `sdmc:/switch/horizon/resources.romfs` and launch Horizon in kaiHEN. Create a fresh world, place a distinctive block, use **Save and Quit to Title**, then exit Horizon. Relaunch and reopen the world to check the block and your inventory. Saves live under `sdmc:/switch/horizon/saves/` and the startup log is `sdmc:/switch/horizon/logs/latest.log`.
+
+Check for button clicks and block sounds with the imported sounds present. This build includes the [Switch AudioOut patch](https://github.com/MakrSas/horizon-switch/pull/1).
+
+For multiplayer, try **Multiplayer → Direct Connection** to a compatible 26.3 offline-mode server, then test LAN discovery and inviting a player on the same network. The Switch port now includes its current LAN IPv4 address in friend invites. Switch 2 audio and networking still need hardware verification.
+
+Press **A** on a text field in controller focus mode to open Horizon's keyboard. Its keys also accept touch taps. In a world, **D-pad Right** opens chat. **ZR** sends Tab to complete or cycle through chat suggestions, and **+** sends the message. On Switch 2, **Options → Video Settings → Resolution** switches between 720p and 1080p while the game is running.
+
+The startup screen offers **Play Offline** and Microsoft sign-in. Build with a Mojang-approved public `HORIZON_MSA_CLIENT_ID` to enable phone sign-in. Scan the QR code to open Microsoft's verification page, then enter the code shown on the Switch. The account session lasts until Horizon exits. See the [app registration instructions](../docs/microsoft-account.md).
+
 ## How the port works
 
 - **Target.** `aarch64-nintendo-switch-newlib.json`, a custom Rust target (`target_os = "horizon"`, newlib), linked by devkitA64 against libnx. `std` is built from source with `-Z build-std`, from a copy of the toolchain's `rust-src` patched by `std/std.patch`.

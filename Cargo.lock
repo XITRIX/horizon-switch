@@ -1329,6 +1329,7 @@ dependencies = [
  "naga",
  "png",
  "pollster",
+ "qrcode",
  "rustix 1.1.5",
  "serde",
  "serde_json",
@@ -1365,6 +1366,7 @@ dependencies = [
  "chacha20poly1305",
  "getrandom 0.3.4",
  "hkdf",
+ "horizon-nx",
  "if-addrs",
  "serde",
  "serde_json",
@@ -2806,6 +2808,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+
+[[package]]
 name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3669,6 +3677,8 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "url",
  "webpki-roots 0.26.11",
 ]

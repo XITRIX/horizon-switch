@@ -87,6 +87,11 @@ pub(super) struct MenuCursor {
     repeats: u32,
     /// The on-screen keyboard, open over a text field.
     pub(super) osk: Option<Keyboard>,
+    /// Keep the keyboard in place when touching it replaces the pad cursor.
+    osk_at_top: bool,
+    /// Swallow the release following a keyboard tap, even if Done closed it.
+    #[cfg(target_os = "horizon")]
+    osk_pointer_held: bool,
     /// The keyboard was closed on this screen (it doesn't open by itself again).
     osk_dismissed: bool,
 }
@@ -883,6 +888,10 @@ impl Game<'_> {
         {
             return;
         }
+        self.pad.menu.osk_at_top = self.screen == Screen::Chat
+            || self.gui_scale().is_some_and(|batch| {
+                self.pad.menu.focus.is_some_and(|focus| focus.center().1 > batch.height / 2.0)
+            });
         self.pad.menu.osk = Some(Keyboard::default());
     }
 
@@ -894,7 +903,7 @@ impl Game<'_> {
             && !menu.osk_dismissed
             && self.pad.in_use
             && menu.open_polls >= 3
-            && self.pad_focus_mode()
+            && (cfg!(target_os = "horizon") || self.pad_focus_mode())
             && (self.screen == Screen::Chat || self.sign_edit.is_some())
         {
             self.pad.menu.osk_dismissed = true;
@@ -918,6 +927,12 @@ impl Game<'_> {
             Output::Text(t) => (None, Some(t.as_str())),
             Output::Backspace => (Some(KeyCode::Backspace), None),
             Output::Enter => (Some(KeyCode::Enter), None),
+            Output::Tab => {
+                if self.screen == Screen::Chat && self.title.is_none() {
+                    self.chat_key_code(KeyCode::Tab, None);
+                }
+                return;
+            }
             Output::Close => {
                 self.pad.menu.osk = None;
                 self.pad.menu.osk_dismissed = true;
@@ -984,6 +999,31 @@ impl Game<'_> {
         }
     }
 
+    #[cfg(target_os = "horizon")]
+    pub(super) fn pad_osk_pointer(&mut self, state: ElementState) -> bool {
+        if state == ElementState::Released {
+            return std::mem::take(&mut self.pad.menu.osk_pointer_held);
+        }
+        if self.pad.menu.osk.is_none() {
+            return false;
+        }
+        let Some(mut batch) = self.gui_scale() else {
+            return false;
+        };
+        let ui = horizon_client::ui_theme::Ui::new(&self.gui.atlas, &mut batch, self.cursor);
+        let menu = &mut self.pad.menu;
+        let (captured, output) = menu
+            .osk
+            .as_mut()
+            .expect("the keyboard is open")
+            .tap((ui.w, ui.h), ui.cursor, menu.osk_at_top);
+        menu.osk_pointer_held = captured;
+        if let Some(output) = output {
+            self.pad_osk_output(output);
+        }
+        captured
+    }
+
     // ---- drawing ----
 
     /// The pad's cursor (pointer mode) or focus highlight (focus mode), and
@@ -993,14 +1033,13 @@ impl Game<'_> {
             return;
         }
         if let Some(keyboard) = &self.pad.menu.osk {
-            let at_top = self
-                .pad
-                .menu
-                .focus
-                .is_some_and(|f| f.center().1 > batch.height / 2.0)
-                || self.screen == Screen::Chat;
             let mut ui = horizon_client::ui_theme::Ui::new(&self.gui.atlas, batch, self.cursor);
-            keyboard.draw(&mut ui, at_top, self.ui.options.pad_style);
+            keyboard.draw(
+                &mut ui,
+                self.pad.menu.osk_at_top,
+                self.ui.options.pad_style,
+                self.screen == Screen::Chat,
+            );
             ui.finish();
             return;
         }

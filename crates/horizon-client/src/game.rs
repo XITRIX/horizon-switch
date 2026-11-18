@@ -117,6 +117,8 @@ mod options;
 mod packs;
 mod pad;
 mod pad_menu;
+#[cfg(target_os = "horizon")]
+mod switch_login;
 mod paintings;
 mod passengers;
 mod persist;
@@ -338,6 +340,9 @@ impl Options {
             .parent()
             .ok_or("missing executable directory")?
             .join("resources");
+        // On Switch 2, open local worlds directly to avoid the failing in-memory
+        // login to the integrated server. Explicit launch options still override it.
+        let switch2 = cfg!(target_os = "horizon") && option_env!("SWITCH2") == Some("1");
         let mut o = Self {
             resources: if sibling.join("horizon-resources.json").exists() {
                 sibling
@@ -376,7 +381,7 @@ impl Options {
             dedicated: None,
             benchmark: None,
             dev_mods: Vec::new(),
-            server_thread: std::env::var("HORIZON_SERVER_THREAD").map_or(true, |v| v != "0"),
+            server_thread: std::env::var("HORIZON_SERVER_THREAD").map_or(!switch2, |v| v != "0"),
             execution_role: execution_role::ExecutionRole::Client,
         };
         let mut session_file = std::env::var("HORIZON_SESSION_FILE").ok();
@@ -7806,6 +7811,8 @@ impl Game<'_> {
         {
             return self.open_integrated(folder, name, seed, creative, create);
         }
+        #[cfg(target_os = "horizon")]
+        log::info!("Horizon: opening the local world directly");
         let request = world_loading::WorldRequest::new(folder, name, seed, creative, create)?;
         if self.window.is_some() {
             self.perf.world_opening();
@@ -9447,6 +9454,7 @@ impl Game<'_> {
             self.all_sections_changed();
         }
         self.audio.master = self.settings.master_volume;
+        self.apply_music_frequency();
         horizon_client::hud::GUI_SCALE.store(
             self.settings.gui_scale,
             std::sync::atomic::Ordering::Relaxed,
@@ -11142,6 +11150,11 @@ impl ApplicationHandler for Game<'_> {
         }
         self.window = Some(window);
         self.apply_settings();
+        #[cfg(target_os = "horizon")]
+        if let Err(error) = self.apply_switch_resolution() {
+            self.error = Some(error);
+            event_loop.exit();
+        }
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -11252,6 +11265,12 @@ impl ApplicationHandler for Game<'_> {
                 }
                 _ => {}
             }
+            return;
+        }
+        #[cfg(target_os = "horizon")]
+        if let WindowEvent::MouseInput { state, button: MouseButton::Left, .. } = &event
+            && self.pad_osk_pointer(*state)
+        {
             return;
         }
         let result: Result<()> = (|| {
@@ -13593,6 +13612,8 @@ impl Loading {
         game.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
+        #[cfg(target_os = "horizon")]
+        game.apply_switch_resolution()?;
         game.previous = Instant::now();
         log::info!(
             "Horizon: startup handoff {} ms (renderer {} ms, start_game {} ms)",
@@ -13738,6 +13759,17 @@ pub fn run() -> Result<()> {
     let Some(mut options) = Options::read()? else {
         return Ok(());
     };
+    #[cfg(target_os = "horizon")]
+    if options.execution_role.is_client()
+        && options.benchmark.is_none()
+        && !options.offscreen
+        && options.frames.is_none()
+        && options.world_frames.is_none()
+        && horizon_client::auth::current().is_none()
+        && !switch_login::choose_profile()
+    {
+        return Ok(());
+    }
     if options.execution_role == execution_role::ExecutionRole::DedicatedServer
         && !dedicated::preflight(&mut options)?
     {

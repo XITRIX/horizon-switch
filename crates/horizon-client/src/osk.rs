@@ -13,6 +13,7 @@ pub enum Output {
     Text(String),
     Backspace,
     Enter,
+    Tab,
     /// The keyboard closes; the field keeps its text.
     Close,
 }
@@ -143,6 +144,51 @@ const SYMBOLS: [Row; 5] = [
     BOTTOM,
 ];
 
+const KEY_UNIT: f32 = 50.0;
+const KEY_GAP: f32 = 6.0;
+const KEY_HEIGHT: f32 = 38.0;
+const WIDTH: f32 = 10.0 * KEY_UNIT + 9.0 * KEY_GAP;
+const HEIGHT: f32 = 5.0 * KEY_HEIGHT + 4.0 * KEY_GAP + 24.0 + 30.0;
+const PLATE_PADDING: f32 = 12.0;
+
+/// The same key and panel bounds are used for drawing and taps.
+struct Layout {
+    x: f32,
+    y: f32,
+}
+
+impl Layout {
+    fn new(w: f32, h: f32, at_top: bool) -> Self {
+        Self {
+            x: ((w - WIDTH) / 2.0).round(),
+            y: if at_top { 16.0 } else { h - HEIGHT - 16.0 },
+        }
+    }
+
+    fn plate(&self) -> [f32; 4] {
+        [
+            self.x - PLATE_PADDING,
+            self.y - PLATE_PADDING,
+            WIDTH + 2.0 * PLATE_PADDING,
+            HEIGHT,
+        ]
+    }
+
+    fn key(&self, row: usize, keys: Row, column: usize) -> [f32; 4] {
+        let (left, units) = Keyboard::span(keys, column);
+        [
+            self.x + left * (KEY_UNIT + KEY_GAP),
+            self.y + row as f32 * (KEY_HEIGHT + KEY_GAP),
+            units * KEY_UNIT + (units - 1.0) * KEY_GAP,
+            KEY_HEIGHT,
+        ]
+    }
+}
+
+fn contains([x, y, w, h]: [f32; 4], (px, py): (f32, f32)) -> bool {
+    px >= x && px < x + w && py >= y && py < y + h
+}
+
 /// The keyboard's state while open.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Keyboard {
@@ -248,6 +294,7 @@ impl Keyboard {
             Button::West => Some(Output::Backspace),
             Button::North => Some(Output::Text(" ".into())),
             Button::Start => Some(Output::Enter),
+            Button::RightTrigger => Some(Output::Tab),
             Button::East => Some(Output::Close),
             Button::LeftStick | Button::LeftTrigger => {
                 self.shift = !self.shift;
@@ -266,38 +313,45 @@ impl Keyboard {
         }
     }
 
+    /// A tap returns whether the keyboard captured it and the key's output, if any.
+    pub fn tap(
+        &mut self,
+        viewport: (f32, f32),
+        position: (f32, f32),
+        at_top: bool,
+    ) -> (bool, Option<Output>) {
+        let layout = Layout::new(viewport.0, viewport.1, at_top);
+        if !contains(layout.plate(), position) {
+            return (false, None);
+        }
+        for (row, &keys) in self.rows().iter().enumerate() {
+            for column in 0..keys.len() {
+                if contains(layout.key(row, keys, column), position) {
+                    (self.row, self.col) = (row, column);
+                    return (true, self.press());
+                }
+            }
+        }
+        (true, None)
+    }
+
     /// Draw the keyboard across the bottom of the screen, or the top when
     /// the field it types into is in the lower half.
-    pub fn draw(&self, ui: &mut Ui, at_top: bool, glyphs: GlyphStyle) {
-        const UNIT: f32 = 50.0;
-        const GAP: f32 = 6.0;
-        const KEY_H: f32 = 38.0;
-        let width = 10.0 * UNIT + 9.0 * GAP;
-        let height = 5.0 * KEY_H + 4.0 * GAP + 24.0 + 30.0;
-        let x0 = ((ui.w - width) / 2.0).round();
-        let y0 = if at_top { 16.0 } else { ui.h - height - 16.0 };
+    pub fn draw(&self, ui: &mut Ui, at_top: bool, glyphs: GlyphStyle, chat: bool) {
+        let layout = Layout::new(ui.w, ui.h, at_top);
+        let [x, y, w, h] = layout.plate();
         ui.rounded(
-            x0 - 12.0,
-            y0 - 12.0,
-            width + 24.0,
-            height,
+            x,
+            y,
+            w,
+            h,
             ui_theme::RADIUS_PLATE,
             color::with_alpha(color::BG, 0.94),
         );
-        ui.border(
-            x0 - 12.0,
-            y0 - 12.0,
-            width + 24.0,
-            height,
-            ui_theme::RADIUS_PLATE,
-            color::BORDER,
-        );
-        for (r, row) in self.rows().iter().enumerate() {
-            let y = y0 + r as f32 * (KEY_H + GAP);
-            for (i, (key, units)) in row.iter().enumerate() {
-                let (left, _) = Self::span(row, i);
-                let x = x0 + left * (UNIT + GAP);
-                let w = units * UNIT + (units - 1.0) * GAP;
+        ui.border(x, y, w, h, ui_theme::RADIUS_PLATE, color::BORDER);
+        for (r, &row) in self.rows().iter().enumerate() {
+            for (i, (key, _)) in row.iter().enumerate() {
+                let [x, y, w, h] = layout.key(r, row, i);
                 let focused = r == self.row && i == self.col;
                 let lit = matches!(key, Key::Shift) && (self.shift || self.caps)
                     || matches!(key, Key::Layer) && self.symbols;
@@ -308,7 +362,7 @@ impl Keyboard {
                 } else {
                     (color::RAISED, color::TEXT)
                 };
-                ui.rounded(x, y, w, KEY_H, ui_theme::RADIUS, plate);
+                ui.rounded(x, y, w, h, ui_theme::RADIUS, plate);
                 let label = match key {
                     Key::Char(ch) => self.letter(*ch),
                     Key::Shift if self.caps => "CAPS".into(),
@@ -323,7 +377,7 @@ impl Keyboard {
                 ui.text_line(
                     Face::Medium,
                     ui_theme::BODY,
-                    KEY_H,
+                    h,
                     x + ((w - lw) / 2.0).round(),
                     y,
                     ink,
@@ -337,18 +391,20 @@ impl Keyboard {
             (Button::North, "Space"),
             (Button::LeftTrigger, "Shift"),
             (Button::RightBumper, "Symbols"),
+            (Button::RightTrigger, "Tab"),
             (Button::Start, "Done"),
             (Button::East, "Close"),
         ];
         let line: Vec<String> = hints
             .iter()
+            .filter(|(button, _)| chat || *button != Button::RightTrigger)
             .map(|(b, what)| format!("{} {what}", b.label(glyphs)))
             .collect();
         ui.text_centered(
             Face::Regular,
             ui_theme::SMALL,
-            x0 + width / 2.0,
-            y0 + 5.0 * (KEY_H + GAP) + 2.0,
+            layout.x + WIDTH / 2.0,
+            layout.y + 5.0 * (KEY_HEIGHT + KEY_GAP) + 2.0,
             color::MUTED,
             &line.join("   "),
         );
@@ -358,6 +414,56 @@ impl Keyboard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn touch_uses_the_drawn_keys_and_leaves_the_area_outside_for_chat() {
+        let viewport = (1240.0, 700.0);
+        let mut keyboard = Keyboard::default();
+        for at_top in [true, false] {
+            let layout = Layout::new(viewport.0, viewport.1, at_top);
+            let center = |row, keys, column| {
+                let [x, y, w, h] = layout.key(row, keys, column);
+                (x + w / 2.0, y + h / 2.0)
+            };
+            let tap = |k: &mut Keyboard, row, keys, column| {
+                k.tap(viewport, center(row, keys, column), at_top)
+            };
+            assert_eq!(
+                tap(&mut keyboard, 1, LETTERS[1], 0),
+                (true, Some(Output::Text("q".into())))
+            );
+            assert_eq!(tap(&mut keyboard, 4, BOTTOM, 1), (true, None));
+            assert_eq!(
+                tap(&mut keyboard, 1, SYMBOLS[1], 0),
+                (true, Some(Output::Text("/".into())))
+            );
+            assert_eq!(
+                tap(&mut keyboard, 4, BOTTOM, 3),
+                (true, Some(Output::Backspace))
+            );
+            assert_eq!(
+                tap(&mut keyboard, 4, BOTTOM, 4),
+                (true, Some(Output::Enter))
+            );
+            assert_eq!(tap(&mut keyboard, 4, BOTTOM, 1), (true, None));
+            assert_eq!(keyboard.tap(viewport, (0.0, 0.0), at_top), (false, None));
+            assert_eq!(
+                keyboard.tap(
+                    viewport,
+                    (layout.x + KEY_UNIT + 1.0, layout.y + 2.0),
+                    at_top
+                ),
+                (true, None)
+            );
+        }
+    }
+
+    #[test]
+    fn right_trigger_produces_tab_without_changing_the_keyboard() {
+        let mut keyboard = Keyboard::default();
+        assert_eq!(keyboard.button(Button::RightTrigger), Some(Output::Tab));
+        assert_eq!(keyboard, Keyboard::default());
+    }
 
     #[test]
     fn rows_are_ten_units_wide() {

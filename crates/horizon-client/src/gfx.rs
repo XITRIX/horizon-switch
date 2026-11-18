@@ -849,10 +849,14 @@ async fn open_device(
         if attempt > 0 {
             log::warn!("Horizon renderer: trying {name} ({})", failures.join("; "));
         }
+        #[cfg(target_os = "horizon")]
+        startup_step(format_args!("opening the {name} instance"));
         let instance = wgpu::Instance::new(instance_descriptor(backends));
         let surface = if offscreen {
             None
         } else {
+            #[cfg(target_os = "horizon")]
+            startup_step(format_args!("creating the {name} window surface"));
             match instance.create_surface(window.clone()) {
                 Ok(surface) => Some(surface),
                 Err(e) => {
@@ -861,6 +865,8 @@ async fn open_device(
                 }
             }
         };
+        #[cfg(target_os = "horizon")]
+        startup_step(format_args!("selecting an adapter for {name}"));
         let adapter = match instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -1045,6 +1051,8 @@ impl Renderer {
         let info = adapter.get_info();
         crate::graphics::suggest_reduced_far_detail(crate::graphics::lod_capped(&info));
         let size = window.inner_size();
+        #[cfg(target_os = "horizon")]
+        log::info!("Horizon: framebuffer {}x{}", size.width, size.height);
         let (config, present_modes) = if let Some(surface) = &surface {
             let mut config = surface
                 .get_default_config(&adapter, size.width.max(1), size.height.max(1))
@@ -2570,6 +2578,54 @@ impl Renderer {
             self.offscreen = Some(Self::offscreen_target(&self.device, &self.config));
         }
         self.depth = Self::depth(&self.device, &self.config, self.cull.as_ref());
+    }
+    #[cfg(target_os = "horizon")]
+    pub fn set_switch_resolution(&mut self, [width, height]: [u32; 2]) -> Result<bool> {
+        use winit::dpi::PhysicalSize;
+
+        let Some(surface) = self.surface.as_ref() else {
+            return Ok(false);
+        };
+        let previous = PhysicalSize::new(self.config.width, self.config.height);
+        let wanted = PhysicalSize::new(width, height);
+        startup_step(format_args!("changing the Switch surface to {width}x{height}"));
+        self.device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(std::time::Duration::from_secs(5)),
+        })?;
+        if self.window.request_inner_size(wanted) != Some(wanted) {
+            log::warn!("Horizon: the display did not accept {width}x{height}");
+            return Ok(false);
+        }
+        let configure = |config| {
+            let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+            let internal = self.device.push_error_scope(wgpu::ErrorFilter::Internal);
+            let validation = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+            surface.configure(&self.device, config);
+            let validation = pollster::block_on(validation.pop());
+            let internal = pollster::block_on(internal.pop());
+            let oom = pollster::block_on(oom.pop());
+            validation.or(internal).or(oom)
+        };
+        let config = wgpu::SurfaceConfiguration {
+            width,
+            height,
+            ..self.config.clone()
+        };
+        if let Some(error) = configure(&config) {
+            log::warn!("Horizon: could not switch to {width}x{height}: {error}");
+            if self.window.request_inner_size(previous) != Some(previous) {
+                return Err("The Switch display could not restore its previous size".into());
+            }
+            if let Some(error) = configure(&self.config) {
+                return Err(format!("Restoring the Switch swapchain failed: {error}").into());
+            }
+            return Ok(false);
+        }
+        self.depth = Self::depth(&self.device, &config, self.cull.as_ref());
+        self.config = config;
+        startup_step(format_args!("Switch framebuffer set to {width}x{height}"));
+        Ok(true)
     }
     /// Whether sections are drawn as one index list per frame (`flat`).
     pub fn flat_draws(&self) -> bool {

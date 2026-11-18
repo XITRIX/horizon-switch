@@ -31,6 +31,8 @@ pub enum Opt {
     MaxFps,
     Vsync,
     Fullscreen,
+    #[cfg(target_os = "horizon")]
+    SwitchResolution,
     SmoothLighting,
     Clouds,
     CloudRange,
@@ -67,6 +69,7 @@ pub enum Opt {
     ReducedDebugInfo,
     HighContrast,
     ShowSubtitles,
+    MusicFrequency,
     NotificationDisplayTime,
     Narrator,
     TextBackground,
@@ -213,6 +216,8 @@ impl Opt {
             Opt::MaxFps => "options.framerateLimit",
             Opt::Vsync => "options.vsync",
             Opt::Fullscreen => "options.fullscreen",
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchResolution => "Resolution",
             Opt::SmoothLighting => "options.ao",
             Opt::Clouds => "options.renderClouds",
             Opt::CloudRange => "options.renderCloudsDistance",
@@ -249,6 +254,7 @@ impl Opt {
             Opt::ReducedDebugInfo => "options.reducedDebugInfo",
             Opt::HighContrast => "options.accessibility.high_contrast",
             Opt::ShowSubtitles => "options.showSubtitles",
+            Opt::MusicFrequency => "options.music_frequency",
             Opt::NotificationDisplayTime => "options.notifications.display_time",
             Opt::Narrator => "options.narrator",
             Opt::TextBackground => "options.accessibility.text_background",
@@ -527,6 +533,11 @@ impl Opt {
             Opt::ViewBobbing => on_off(s.view_bobbing),
             Opt::Vsync => on_off(s.vsync),
             Opt::Fullscreen => on_off(s.fullscreen),
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchResolution => Text::literal(format!(
+                "{}p",
+                crate::settings::switch_resolution(&s.file)[1]
+            )),
             Opt::SmoothLighting => on_off(s.smooth_lighting),
             Opt::Clouds => tr(match s.clouds.as_str() {
                 "false" => "options.off",
@@ -580,6 +591,11 @@ impl Opt {
             Opt::ReducedDebugInfo => on_off(s.reduced_debug_info),
             Opt::HighContrast => on_off(s.high_contrast),
             Opt::ShowSubtitles => on_off(s.show_subtitles),
+            Opt::MusicFrequency => tr(match s.file.int("musicFrequency") {
+                1 => "options.music_frequency.frequent",
+                2 => "options.music_frequency.constant",
+                _ => "options.music_frequency.default",
+            }),
             Opt::ForceUnicode => on_off(s.force_unicode),
             Opt::JapaneseGlyphs => on_off(s.japanese_glyphs),
             Opt::PadEnabled => on_off(s.controller.enabled),
@@ -719,6 +735,11 @@ impl Opt {
             Opt::ViewBobbing => s.view_bobbing = !s.view_bobbing,
             Opt::Vsync => s.vsync = !s.vsync,
             Opt::Fullscreen => s.fullscreen = !s.fullscreen,
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchResolution => s.file.set(
+                "switchResolution",
+                crate::options_file::V::Int(i32::from(s.file.int("switchResolution") == 0)),
+            ),
             Opt::SmoothLighting => s.smooth_lighting = !s.smooth_lighting,
             Opt::Clouds => {
                 let order = ["false", "fast", "true"];
@@ -750,6 +771,10 @@ impl Opt {
             Opt::ReducedDebugInfo => s.reduced_debug_info = !s.reduced_debug_info,
             Opt::HighContrast => s.high_contrast = !s.high_contrast,
             Opt::ShowSubtitles => s.show_subtitles = !s.show_subtitles,
+            Opt::MusicFrequency => s.file.set(
+                "musicFrequency",
+                crate::options_file::V::Int(i32::from(next(s.file.int("musicFrequency") as u8, 3))),
+            ),
             Opt::ForceUnicode => s.force_unicode = !s.force_unicode,
             Opt::JapaneseGlyphs => s.japanese_glyphs = !s.japanese_glyphs,
             Opt::PadEnabled => s.controller.enabled = !s.controller.enabled,
@@ -1413,6 +1438,8 @@ impl OptionsUi {
                     )),
                 )];
                 rows.push(Row::Header("options.video.display.header"));
+                #[cfg(target_os = "horizon")]
+                rows.push(Row::Big(Opt::SwitchResolution));
                 rows.extend(pairs(&[
                     Opt::MaxFps,
                     Opt::Vsync,
@@ -1453,7 +1480,7 @@ impl OptionsUi {
                 let mut rows = vec![Row::Big(Opt::Volume(0))];
                 let others: Vec<Opt> = (1..SOUND_SOURCES.len()).map(Opt::Volume).collect();
                 rows.extend(pairs(&others));
-                rows.extend(pairs(&[Opt::ShowSubtitles]));
+                rows.extend(pairs(&[Opt::ShowSubtitles, Opt::MusicFrequency]));
                 rows
             }
             Page::Controls => {

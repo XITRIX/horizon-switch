@@ -3,7 +3,7 @@
 use super::Game;
 use horizon_client::{
     blocks::Fluid,
-    music::{BackgroundMusic, Music, Situation},
+    music::{BackgroundMusic, Music, MusicFrequency, Situation},
     sound_engine::TickContext,
 };
 
@@ -15,6 +15,13 @@ impl Game<'_> {
         let loading = self.title.is_none() && self.player.is_none() && self.win.is_none();
         self.music
             .tick(music.as_ref(), volume, loading, &mut self.audio);
+    }
+    pub(super) fn apply_music_frequency(&mut self) {
+        let frequency = MusicFrequency::parse(&self.settings.file.name("musicFrequency"));
+        if frequency != self.music.frequency {
+            let (music, _) = self.situational_music();
+            self.music.set_frequency(frequency, music.as_ref());
+        }
     }
     /// `Minecraft.tick` -> `SoundManager.tick(pause)`, after the music, with
     /// `pauseAllExcept(MUSIC, UI)` when the game pauses and `resume` when it

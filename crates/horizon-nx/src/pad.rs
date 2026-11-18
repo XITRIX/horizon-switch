@@ -18,9 +18,31 @@ struct PadState {
 
 unsafe extern "C" {
     fn nxshim_rumble(handheld: bool, styles: u32, low: f32, high: f32);
+    fn hidInitialize() -> u32;
+    fn hidExit();
     fn padConfigureInput(max_players: u32, style_set: u32);
     fn padInitializeWithMask(pad: *mut PadState, mask: u64);
     fn padUpdate(pad: *mut PadState);
+}
+
+/// Owns the HID service for a pad used before the windowing backend starts.
+pub struct Hid(());
+
+impl Hid {
+    pub fn open() -> Result<Self, u32> {
+        // SAFETY: one reference to the libnx service, released in Drop.
+        match unsafe { hidInitialize() } {
+            0 => Ok(Self(())),
+            result => Err(result),
+        }
+    }
+}
+
+impl Drop for Hid {
+    fn drop(&mut self) {
+        // SAFETY: open acquired this reference, and the early pad is finished.
+        unsafe { hidExit() };
+    }
 }
 
 /// `HidNpadStyleSet_NpadStandard`: Pro Controller, handheld, dual, single left and right Joy-Con.

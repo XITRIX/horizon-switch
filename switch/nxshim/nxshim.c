@@ -35,6 +35,31 @@ char *dlerror(void) { return (char *)"the Switch has no dynamic loader"; }
 // address so they can be matched against the ELF.
 #include <stdio.h>
 #include <stdint.h>
+#ifdef __SWITCH2__
+// Record native exceptions even when Rust and newlib cannot run their handlers.
+// The SDK supplies a separate stack and re-raises the exception after we return.
+_Alignas(16) u8 __nx_exception_stack[0x4000];
+u64 __nx_exception_stack_size = sizeof(__nx_exception_stack);
+extern void _start(void);
+
+void __libnx_exception_handler(ThreadExceptionDump *ctx) {
+    static const char path[] = "/switch/horizon/native-fault.bin";
+    FsFileSystem *sdmc = fsdevGetDeviceFileSystem("sdmc");
+    if (!sdmc)
+        return;
+    const u64 record[] = {
+        1, (uintptr_t)&_start, ctx->error_desc, ctx->esr,
+        ctx->pc.x, ctx->lr.x, ctx->sp.x, ctx->far.x,
+    };
+    FsFile file;
+    fsFsCreateFile(sdmc, path, sizeof(record), 0);
+    if (R_SUCCEEDED(fsFsOpenFile(sdmc, path, FsOpenMode_Write, &file))) {
+        fsFileWrite(&file, 0, record, sizeof(record), FsWriteOption_Flush);
+        fsFileClose(&file);
+    }
+}
+#endif
+
 void __real_fatalThrow(Result err) NX_NORETURN;
 void __wrap_fatalThrow(Result err) {
     svcOutputDebugString("horizon fatal", 13);
@@ -215,6 +240,7 @@ int __wrap_pthread_setspecific(pthread_key_t key, const void *value) {
 // Every thread also starts in thread_start, which sets TPIDR_EL0: NVK carries Rust code built for
 // Linux (its shader compiler, NAK), whose thread-locals are read from TPIDR_EL0, while libnx keeps
 // the thread pointer in ThreadVars.tls_tp (offset 0x1f8 of the TLS area) and leaves the register 0.
+#ifndef __SWITCH2__
 static void set_thread_pointer(void) {
     uint64_t tp;
     __asm__ volatile("mrs %0, tpidrro_el0\n\t"
@@ -239,27 +265,34 @@ static void thread_start(void *p) {
     free(p);
     start.entry(start.arg);
 }
+#endif
 
 Result __real_threadCreate(Thread *t, ThreadFunc entry, void *arg, void *stack_mem, size_t stack_sz,
                            int prio, int cpuid);
 Result __wrap_threadCreate(Thread *t, ThreadFunc entry, void *arg, void *stack_mem, size_t stack_sz,
                            int prio, int cpuid) {
     static unsigned next;
+#ifndef __SWITCH2__
     ThreadStart *start = malloc(sizeof *start);
     if (!start)
         return MAKERESULT(Module_Libnx, LibnxError_OutOfMemory);
     start->entry = entry;
     start->arg = arg;
+    entry = thread_start;
+    arg = start;
+#endif
     Result rc = -1;
     if (cpuid == -2) {
         static const int cores[3] = {1, 2, 0};
         int core = cores[__atomic_fetch_add(&next, 1, __ATOMIC_RELAXED) % 3];
-        rc = __real_threadCreate(t, thread_start, start, stack_mem, stack_sz, prio, core);
+        rc = __real_threadCreate(t, entry, arg, stack_mem, stack_sz, prio, core);
     }
     if (R_FAILED(rc))
-        rc = __real_threadCreate(t, thread_start, start, stack_mem, stack_sz, prio, cpuid);
+        rc = __real_threadCreate(t, entry, arg, stack_mem, stack_sz, prio, cpuid);
+#ifndef __SWITCH2__
     if (R_FAILED(rc))
         free(start);
+#endif
     return rc;
 }
 
@@ -281,10 +314,15 @@ int nxshim_mount_romfs(const char *path, const char *name) {
     return R_SUCCEEDED(romfsMountFromFsdev(path, 0, name)) ? 0 : -1;
 }
 
-// The Switch port quits at once: joining every worker on the way out of the title screen hangs.
-void nxshim_exit_now(void) {
+void nxshim_exit_successfully(void) {
     fflush(NULL);
+#ifdef __SWITCH2__
+    // libounce closes the app's services and returns to the NRO loader.
+    exit(EXIT_SUCCESS);
+#else
+    // Keep the Switch 1 exit path for the NVK build.
     svcExitProcess();
+#endif
 }
 
 // The cores this process may use (its kernel core mask): 4 when the npdm grants core 3.
@@ -322,7 +360,36 @@ void nxshim_rumble(bool handheld, u32 styles, float low, float high) {
     hidSendVibrationValues(handles, values, single ? 1 : 2);
 }
 
-// BSD sockets and DNS (libnx's bsd and sfdnsres services), for the game's HTTPS requests.
-int nxshim_net_init(void) {
-    return R_SUCCEEDED(socketInitializeDefault()) ? 0 : -1;
+// BSD sockets and DNS for multiplayer and HTTPS. Keep the SDK result for startup diagnostics.
+Result nxshim_net_init(void) {
+    return socketInitializeDefault();
+}
+
+Result nxshim_local_ipv4(u32 *address) {
+    Result rc = nifmInitialize(NifmServiceType_User);
+    if (R_SUCCEEDED(rc)) {
+        rc = nifmGetCurrentIpAddress(address);
+        nifmExit();
+    }
+    return rc;
+}
+
+// Set a fixed touch coordinate space independently of the renderer size.
+void nxshim_init_touch(void) {
+#ifdef __SWITCH2__
+    Result rc = hidSetTouchScreenOutputRanges(1280, 720);
+    if (R_FAILED(rc))
+        fprintf(stderr, "Horizon: touch coordinate range failed (0x%x)\n", rc);
+#endif
+    hidInitializeTouchScreen();
+}
+
+Result nxshim_set_display_size(u32 width, u32 height) {
+    NWindow *window = nwindowGetDefault();
+#ifdef __SWITCH2__
+    // Libounce's mode dimensions can change while a Vulkan swapchain is attached.
+    return nwindowSetModeDimensions(window, width, height, width, height);
+#else
+    return nwindowSetDimensions(window, width, height);
+#endif
 }

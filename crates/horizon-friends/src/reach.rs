@@ -55,6 +55,7 @@ fn shared(ip: IpAddr) -> bool {
 }
 
 /// Interface names of containers and VMs, whose addresses nobody else reaches.
+#[cfg(not(target_os = "horizon"))]
 fn virtual_interface(name: &str) -> bool {
     [
         "docker", "br-", "veth", "virbr", "vboxnet", "vmnet", "lxc", "cni", "podman",
@@ -66,9 +67,9 @@ fn virtual_interface(name: &str) -> bool {
 /// This machine's addresses worth offering, best first: private IPv4 (the
 /// LAN), shared IPv4 (Tailscale's 100.64/10, CGNAT), other IPv4, one global
 /// IPv6. No link-local or unique-local; loopback on request.
+#[cfg(not(target_os = "horizon"))]
 pub fn interface_addresses(loopback: bool) -> Vec<IpAddr> {
     let mut found: Vec<(u8, IpAddr)> = Vec::new();
-    #[cfg(not(target_os = "horizon"))]
     for i in if_addrs::get_if_addrs().unwrap_or_default() {
         if virtual_interface(&i.name) {
             continue;
@@ -112,6 +113,20 @@ pub fn interface_addresses(loopback: bool) -> Vec<IpAddr> {
         }
     }
     out
+}
+
+/// Horizon OS exposes its current IPv4 address through the network interface service.
+#[cfg(target_os = "horizon")]
+pub fn interface_addresses(loopback: bool) -> Vec<IpAddr> {
+    let mut addresses: Vec<_> = horizon_nx::local_ipv4()
+        .filter(|ip| !ip.is_link_local() && !ip.is_loopback())
+        .map(IpAddr::V4)
+        .into_iter()
+        .collect();
+    if loopback {
+        addresses.push(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+    addresses
 }
 
 impl Reach {

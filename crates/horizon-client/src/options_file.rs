@@ -143,6 +143,8 @@ static TABLE: LazyLock<Vec<Def>> = LazyLock::new(|| {
         n("graphicsPreset", GRAPHICS_PRESET, 1),
         id("prioritizeChunkUpdates", 3, 0),
         b("fullscreen", false),
+        #[cfg(target_os = "horizon")]
+        n("switchResolution", &["720p", "1080p"], 0),
         b("exclusiveFullscreen", false),
         b("macFullscreenMenuVisibility", false),
         u("gamma", 0.5),
