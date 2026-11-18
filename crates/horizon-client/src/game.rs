@@ -11070,6 +11070,9 @@ fn hwnd(window: &Window) -> Option<isize> {
     }
 }
 
+#[cfg(target_os = "horizon")]
+mod switch_login;
+
 pub use launch_api::{UsageError, exit_code};
 
 pub(crate) fn run_with(
@@ -11077,6 +11080,17 @@ pub(crate) fn run_with(
     native: horizon_mod_package::runtime::Runtime,
 ) -> Result<()> {
     let mut options = Options::read(options)?;
+    #[cfg(target_os = "horizon")]
+    if options.execution_role.is_client()
+        && options.benchmark.is_none()
+        && !options.offscreen
+        && options.frames.is_none()
+        && options.world_frames.is_none()
+        && horizon_client::auth::current().is_none()
+        && !switch_login::choose_profile()
+    {
+        return Ok(());
+    }
     options.mods.native = Arc::new(native);
     if options.execution_role == execution_role::ExecutionRole::DedicatedServer
         && !dedicated::preflight(&mut options)?
@@ -11134,6 +11148,10 @@ pub(crate) fn run_with(
         return Err(error.into());
     }
     let mut early_settings = Settings::load(&Game::options_path());
+    #[cfg(target_os = "horizon")]
+    {
+        options.window_size = horizon_client::settings::switch_resolution(&early_settings.file);
+    }
     options
         .mods
         .capture_code_switches(&early_settings.mods.disabled);

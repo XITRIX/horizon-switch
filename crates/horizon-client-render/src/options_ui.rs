@@ -252,6 +252,8 @@ impl Opt {
             Opt::MaxFps => "options.framerateLimit",
             Opt::Vsync => "options.vsync",
             Opt::Fullscreen => "options.fullscreen",
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchResolution => "horizon.options.switch_resolution",
             Opt::ExclusiveFullscreen => "options.exclusiveFullscreen",
             Opt::ExclusiveMode => "options.fullscreen.exclusive.mode",
             Opt::GraphicsBackend => "options.graphicsApi",
@@ -794,6 +796,8 @@ impl Opt {
             Opt::ViewBobbing => on_off(s.view_bobbing),
             Opt::Vsync => on_off(s.vsync),
             Opt::Fullscreen => on_off(s.fullscreen),
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchResolution => Text::literal(format!("{}p", crate::settings::switch_resolution(&s.file)[1])),
             Opt::ExclusiveFullscreen => on_off(s.file.bool("exclusiveFullscreen")),
             Opt::TextureFiltering => tr([
                 "options.textureFiltering.none",
@@ -1102,6 +1106,8 @@ impl Opt {
             Opt::ViewBobbing => s.view_bobbing = !s.view_bobbing,
             Opt::Vsync => s.vsync = !s.vsync,
             Opt::Fullscreen => s.fullscreen = !s.fullscreen,
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchResolution => s.file.set("switchResolution", crate::options_file::V::Int(i32::from(s.file.int("switchResolution") == 0))),
             Opt::ExclusiveFullscreen => {
                 let on = s.file.bool("exclusiveFullscreen");
                 s.file
@@ -2853,6 +2859,8 @@ impl OptionsUi {
                 // Settings... opens the graphics screen, which has all of it); it stays for
                 // `horizon-ctl options video-vanilla` and the tests that pin vanilla's screen.
                 let mut rows = vec![Row::Header("options.video.display.header")];
+                #[cfg(target_os = "horizon")]
+                rows.push(Row::Big(Opt::SwitchResolution));
                 rows.push(Row::Big(Opt::ExclusiveMode));
                 rows.extend(pairs(&[
                     Opt::MaxFps,

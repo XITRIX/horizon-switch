@@ -9,7 +9,7 @@ use crate::window::ImePurpose;
 use crate::{error, window};
 
 use super::event_loop::Shared;
-use super::{ffi, ActiveEventLoop, MonitorHandle, WindowId, HEIGHT, WIDTH};
+use super::{ffi, ActiveEventLoop, MonitorHandle, WindowId};
 
 /// The one window: the console's default `NWindow`.
 pub struct Window {
@@ -25,6 +25,14 @@ impl Window {
         if el.shared.window_open.swap(true, Ordering::SeqCst) {
             return Err(os_error!(super::OsError("the Switch has a single window")));
         }
+        // SAFETY: before the renderer attaches buffers to the default NWindow.
+        let result = unsafe {
+            ffi::nwindowSetDimensions(ffi::nwindowGetDefault(), super::WIDTH, super::HEIGHT)
+        };
+        if result != 0 {
+            eprintln!("Horizon: NWindow rejected the initial 720p size (0x{result:08x})");
+        }
+        el.shared.high_resolution.store(false, Ordering::SeqCst);
         el.shared.pending_create.store(true, Ordering::SeqCst);
         Ok(Self { shared: el.shared.clone(), created: Arc::new(AtomicBool::new(true)) })
     }
@@ -88,11 +96,25 @@ impl Window {
 
     #[inline]
     pub fn inner_size(&self) -> PhysicalSize<u32> {
-        PhysicalSize::new(WIDTH, HEIGHT)
+        self.shared.window_size()
     }
 
     #[inline]
-    pub fn request_inner_size(&self, _size: Size) -> Option<PhysicalSize<u32>> {
+    pub fn request_inner_size(&self, size: Size) -> Option<PhysicalSize<u32>> {
+        let size = size.to_physical::<u32>(1.0);
+        if size == self.inner_size() {
+            return Some(size);
+        }
+        let high = size == PhysicalSize::new(1920, 1080);
+        if high || size == PhysicalSize::new(super::WIDTH, super::HEIGHT) {
+            // SAFETY: the Switch event loop applies display changes on the main thread.
+            let result = unsafe { ffi::nxshim_set_display_size(size.width, size.height) };
+            if result == 0 {
+                self.shared.high_resolution.store(high, Ordering::SeqCst);
+            } else {
+                eprintln!("Horizon: NWindow rejected {}x{} (0x{result:08x})", size.width, size.height);
+            }
+        }
         Some(self.inner_size())
     }
 

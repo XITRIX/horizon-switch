@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
+use crate::dpi::PhysicalSize;
 use crate::error::EventLoopError;
 use crate::event::{self, ElementState, MouseButton, StartCause, TouchPhase};
 use crate::event_loop::{self, ControlFlow, DeviceEvents};
@@ -12,7 +13,7 @@ use crate::window::{
     CustomCursor as RootCustomCursor, CustomCursorSource, Theme, WindowId as RootWindowId,
 };
 
-use super::{ffi, DeviceId, MonitorHandle, PlatformSpecificEventLoopAttributes, WindowId};
+use super::{ffi, DeviceId, MonitorHandle, PlatformSpecificEventLoopAttributes, WindowId, WIDTH, HEIGHT};
 
 /// State the window and the loop share (the window may live on another thread).
 #[derive(Default)]
@@ -22,7 +23,18 @@ pub(crate) struct Shared {
     pub(super) pending_destroy: AtomicBool,
     pub(super) redraw: AtomicBool,
     pub(super) focused: AtomicBool,
+    pub(super) high_resolution: AtomicBool,
     wake: AtomicBool,
+}
+
+impl Shared {
+    pub(super) fn window_size(&self) -> PhysicalSize<u32> {
+        if self.high_resolution.load(Ordering::SeqCst) {
+            PhysicalSize::new(1920, 1080)
+        } else {
+            PhysicalSize::new(WIDTH, HEIGHT)
+        }
+    }
 }
 
 pub struct EventLoop<T> {
@@ -47,7 +59,8 @@ impl<T: 'static> EventLoop<T> {
         if rc != 0 {
             return Err(EventLoopError::Os(os_error!(super::OsError("hidInitialize failed"))));
         }
-        unsafe { ffi::hidInitializeTouchScreen() };
+        // SAFETY: HID is open and no touch input has been started yet.
+        unsafe { ffi::nxshim_init_touch() };
         Ok(Self {
             window_target: event_loop::ActiveEventLoop {
                 p: ActiveEventLoop {
@@ -90,7 +103,7 @@ impl<T: 'static> EventLoop<T> {
             let running = unsafe { ffi::appletMainLoop() };
 
             if shared.pending_create.swap(false, Ordering::SeqCst) {
-                window_event(&mut handler, event::WindowEvent::Resized(MonitorHandle.size()));
+                window_event(&mut handler, event::WindowEvent::Resized(shared.window_size()));
                 window_event(&mut handler, event::WindowEvent::Moved((0, 0).into()));
                 shared.redraw.store(true, Ordering::SeqCst);
             }
@@ -107,7 +120,7 @@ impl<T: 'static> EventLoop<T> {
                     shared.focused.store(focused, Ordering::SeqCst);
                     window_event(&mut handler, event::WindowEvent::Focused(focused));
                 }
-                poll_touch(&mut touch, device_id, &mut queued);
+                poll_touch(&mut touch, device_id, shared.window_size(), &mut queued);
                 while let Some(event) = queued.pop_front() {
                     window_event(&mut handler, event);
                 }
@@ -178,7 +191,12 @@ fn wait(shared: &Shared, until: Option<Instant>) -> StartCause {
     }
 }
 
-fn poll_touch(touch: &mut Touch, device_id: event::DeviceId, out: &mut VecDeque<event::WindowEvent>) {
+fn poll_touch(
+    touch: &mut Touch,
+    device_id: event::DeviceId,
+    size: PhysicalSize<u32>,
+    out: &mut VecDeque<event::WindowEvent>,
+) {
     let mut state = ffi::HidTouchScreenState::default();
     // SAFETY: one state into a valid buffer.
     if unsafe { ffi::hidGetTouchScreenStates(&mut state, 1) } == 0
@@ -188,6 +206,10 @@ fn poll_touch(touch: &mut Touch, device_id: event::DeviceId, out: &mut VecDeque<
     }
     touch.sampling = state.sampling_number;
     let count = state.count.clamp(0, 16) as usize;
+    for point in &mut state.touches[..count] {
+        point.x = point.x.saturating_mul(size.width) / WIDTH;
+        point.y = point.y.saturating_mul(size.height) / HEIGHT;
+    }
     let touches = &state.touches[..count];
     let current = touch.finger.and_then(|id| touches.iter().find(|t| t.finger_id == id));
     match (touch.finger, current, touches.first()) {

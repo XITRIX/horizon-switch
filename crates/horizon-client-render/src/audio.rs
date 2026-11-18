@@ -11,7 +11,7 @@ use crate::sound_engine::{
     Sounds, TickContext,
 };
 use crate::sound_events::{Sound, SoundRegistry};
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use horizon_assets::resource_source::{Resource, ResourceSource};
 use horizon_core::random::{LegacyRandom, RandomSource};
@@ -119,7 +119,7 @@ struct Mixer {
     muffle: Muffle,
     limiter_peak: f32,
     /// The output device the stream was opened on (`Library.currentDeviceName`).
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     device_name: String,
     /// How the stream reported the output lost, if it did (`Lost`).
     #[cfg(any(feature = "audio", test))]
@@ -513,9 +513,11 @@ fn attach(mixer: &Mutex<Mixer>, channel: ChannelId, samples: Samples, looping: b
 }
 /// The open output stream. A build without the `audio` feature (the server build, which must not
 /// need libasound) never has one.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 type Stream = cpal::Stream;
-#[cfg(not(feature = "audio"))]
+#[cfg(target_os = "horizon")]
+type Stream = horizon_nx::audio::Stream;
+#[cfg(not(any(feature = "audio", target_os = "horizon")))]
 type Stream = std::convert::Infallible;
 /// A level sound retained for the network broadcaster, in playback order.
 #[derive(Clone, Debug)]
@@ -573,40 +575,40 @@ pub struct Audio {
     /// A mod's muffle fading out (`muffle`), advanced by `tick`.
     muffle: Option<MuffleFade>,
     /// `SoundEngine.lastSeenDevices`: the system default output last seen.
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     default_seen: Option<String>,
     /// The ALSA cards (Linux) or Core Audio devices (macOS) last seen: listing
     /// the output devices probes every one, so it waits for these to change
     /// (`card_fingerprint`).
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     cards_seen: Option<String>,
     /// The other half of `lastSeenDevices`: every output device last seen.
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     devices_seen: Vec<String>,
     /// Ticks since the output devices were last looked at (`DeviceTracker.tick`).
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     device_ticks: u32,
     /// Opening the output again after it failed to (`Reopen`).
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     reopen: Reopen,
     /// The look at the output devices running on its own thread, until a tick
     /// takes its answer: listing them can take 100 ms (#11490).
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     device_probe: Option<PendingProbe>,
 }
 /// What one look at the output devices found: the system default, the
 /// fingerprint, and the device list when those say it may have changed.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 struct DeviceProbe {
     default: Option<String>,
     cards: Option<String>,
     devices: Option<Vec<String>>,
 }
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 type PendingProbe = Arc<Mutex<Option<DeviceProbe>>>;
 /// Looks at the output devices as `should_change_device` did on the render
 /// thread: the device list only when the default or the fingerprint moved.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn probe_devices(default_seen: Option<String>, cards_seen: Option<String>) -> DeviceProbe {
     let default = default_output_name();
     let cards = card_fingerprint();
@@ -950,8 +952,8 @@ fn distance_gain(linear: Option<f32>, distance: f32) -> f32 {
         Some(_) => 0.0,
     }
 }
-// Only the output stream mixes; a build without one (no `audio` feature) never does.
-#[cfg_attr(not(feature = "audio"), allow(dead_code))]
+// Only the output stream mixes; a build without one never does.
+#[cfg_attr(not(any(feature = "audio", target_os = "horizon")), allow(dead_code))]
 fn mix(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
     data.fill(0.0);
     // The camera's forward and up vectors (`Camera.forwardVector`/`upVector`)
@@ -1242,7 +1244,7 @@ fn mix(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
 /// `HORIZON_NO_AUDIO`, or a virtual screen (`vscreen`), where agents and
 /// harnesses run the game and must stay off the user's speakers.
 /// `HORIZON_AUDIO=1` opens the output anyway (testing into a null sink).
-#[cfg(any(feature = "audio", test))]
+#[cfg(any(feature = "audio", target_os = "horizon", test))]
 fn output_disabled(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<String> {
     if var("HORIZON_NO_AUDIO").is_some() {
         return Some("audio off: HORIZON_NO_AUDIO is set".into());
@@ -1258,7 +1260,7 @@ fn output_disabled(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<S
 }
 /// An output stream on `device` in its default configuration, whatever its
 /// sample format: the mixer works in f32 and converts.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn open_device(
     device: &cpal::Device,
     mixer: Arc<Mutex<Mixer>>,
@@ -1303,7 +1305,7 @@ fn open_device(
 }
 /// Try one output device for `open`: skip it when it was already tried, log it
 /// when it opens, and keep its error when it does not.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn try_open_device(
     device: &cpal::Device,
     mixer: Arc<Mutex<Mixer>>,
@@ -1332,7 +1334,7 @@ fn try_open_device(
     }
 }
 /// The name of the system's default output device.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn default_output_name() -> Option<String> {
     cpal::default_host()
         .default_output_device()
@@ -1343,7 +1345,7 @@ fn default_output_name() -> Option<String> {
 /// device's name, inputs included: telling which of them play opens each one
 /// (about 90 ms a second with twenty devices), naming them takes 2 or 3 ms.
 /// `None` elsewhere, where the list is always looked at.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn card_fingerprint() -> Option<String> {
     #[cfg(target_os = "linux")]
     {
@@ -1382,7 +1384,7 @@ fn cards_changed(seen: Option<&str>, cards: Option<&str>) -> bool {
 /// (`buffer_frames`). An environment override `HORIZON_AUDIO_BUFFER` can
 /// specify `default` or a custom frame count (e.g. 2048) when the default short
 /// buffer underruns (e.g. PipeWire min-quantum >= 1024); it is kept as given.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn target_buffer_size(
     range: (u32, u32),
     steps: u32,
@@ -1413,7 +1415,7 @@ fn target_buffer_size(
 /// backend's `BufferSize::Default` means a ~100 ms buffer, so sound effects
 /// come out about 100 ms late: request a short fixed buffer there. Other
 /// platforms keep cpal's default behaviour. `steps`: `target_buffer_size`.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn audio_stream_config(config: &cpal::SupportedStreamConfig, steps: u32) -> cpal::StreamConfig {
     let mut sc = config.config();
     let range = match config.buffer_size() {
@@ -1426,7 +1428,7 @@ fn audio_stream_config(config: &cpal::SupportedStreamConfig, steps: u32) -> cpal
     sc
 }
 
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 fn build_stream<T: cpal::SizedSample + cpal::FromSample<f32>>(
     device: &cpal::Device,
     config: &cpal::SupportedStreamConfig,
@@ -1462,7 +1464,7 @@ fn build_stream<T: cpal::SizedSample + cpal::FromSample<f32>>(
     Ok(stream)
 }
 /// Available audio output device names.
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "audio", not(target_os = "horizon")))]
 pub fn output_devices() -> Vec<String> {
     if output_disabled(|name| std::env::var_os(name)).is_some() {
         return Vec::new();
@@ -1540,12 +1542,12 @@ impl Audio {
         };
         let mut engine = SoundEngine::new(registry);
         engine.loaded = live;
-        #[cfg(feature = "audio")]
+        #[cfg(all(feature = "audio", not(target_os = "horizon")))]
         let cards = if live { card_fingerprint() } else { None };
         // Where the cards gate the list (Linux, macOS), it starts empty: opening the
         // output does not need it, and listing it probes every device; the first
         // change fills it. Elsewhere it starts with every device listed, as before.
-        #[cfg(feature = "audio")]
+        #[cfg(all(feature = "audio", not(target_os = "horizon")))]
         let devices = if live && cards.is_none() {
             output_devices()
         } else {
@@ -1578,25 +1580,44 @@ impl Audio {
             stopped: Default::default(),
             preview: Default::default(),
             muffle: None,
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             default_seen: if live { default_output_name() } else { None },
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             cards_seen: cards,
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             devices_seen: devices,
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             device_ticks: 0,
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             reopen: Reopen::default(),
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             device_probe: None,
         }
     }
-    #[cfg(not(feature = "audio"))]
+    #[cfg(target_os = "horizon")]
+    fn open_named(mixer: Arc<Mutex<Mixer>>, _: &str) -> Result<Stream> {
+        if let Some(reason) = output_disabled(|name| std::env::var_os(name)) {
+            return Err(reason.into());
+        }
+        let stream = Stream::open(
+            move |samples, channels, rate| {
+                if let Ok(mut mixer) = mixer.lock() {
+                    mix(&mut mixer, samples, channels, rate);
+                } else {
+                    samples.fill(0.0);
+                }
+            },
+            |error| log::warn!("Horizon: Switch audio stream error: {error}"),
+        )?;
+        log::info!("Horizon: audio output through Switch AudioOut");
+        Ok(stream)
+    }
+
+    #[cfg(not(any(feature = "audio", target_os = "horizon")))]
     fn open_named(_: Arc<Mutex<Mixer>>, _: &str) -> Result<Stream> {
         Err("this build has no sound output (built without the `audio` feature)".into())
     }
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     fn open_named(mixer: Arc<Mutex<Mixer>>, target: &str) -> Result<Stream> {
         if let Some(reason) = output_disabled(|name| std::env::var_os(name)) {
             return Err(reason.into());
@@ -1630,7 +1651,7 @@ impl Audio {
         }
         Self::open(mixer)
     }
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     pub fn set_device(&mut self, name: &str) -> Result<()> {
         if !self.backend.live && self._stream.is_none() && !self.engine.loaded {
             self.device_name = name.to_owned();
@@ -1648,7 +1669,7 @@ impl Audio {
         self.device_name = name.to_owned();
         Ok(())
     }
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     fn open(mixer: Arc<Mutex<Mixer>>) -> Result<Stream> {
         if let Some(reason) = output_disabled(|name| std::env::var_os(name)) {
             return Err(reason.into());
@@ -1749,17 +1770,17 @@ impl Audio {
             preview: Default::default(),
             muffle: None,
             // The device belongs to the first player's output, which looks after it.
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             default_seen: self.default_seen.clone(),
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             cards_seen: self.cards_seen.clone(),
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             devices_seen: self.devices_seen.clone(),
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             device_ticks: 0,
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             reopen: Reopen::default(),
-            #[cfg(feature = "audio")]
+            #[cfg(all(feature = "audio", not(target_os = "horizon")))]
             device_probe: None,
         }
     }
@@ -1784,7 +1805,7 @@ impl Audio {
     /// device came back; the output is then opened again. The devices are looked
     /// at once a second, on a thread of their own: a later tick reads what it
     /// found.
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     fn should_change_device(&mut self) -> bool {
         // A splitscreen share plays through the first player's output: it leaves the device,
         // and the mixer's lost flag, to that output.
@@ -1834,7 +1855,7 @@ impl Audio {
     }
     /// The rest of `shouldChangeDevice` with what a look at the devices found,
     /// `current` being the device playing now.
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     fn devices_changed(&mut self, probe: DeviceProbe, current: String) -> bool {
         let DeviceProbe {
             default,
@@ -1869,7 +1890,7 @@ impl Audio {
     }
     /// Opens the output on the chosen device again; `retrying` after an earlier try failed.
     /// Whether it opened.
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     fn reopen_output(&mut self, retrying: bool) -> bool {
         // The old stream lets go of the device first: a dead one may still hold it.
         self._stream = None;
@@ -1894,7 +1915,7 @@ impl Audio {
     }
     /// `SoundManager.tick(paused)`, once per client tick.
     pub fn tick(&mut self, paused: bool, ctx: &TickContext) {
-        #[cfg(feature = "audio")]
+        #[cfg(all(feature = "audio", not(target_os = "horizon")))]
         {
             // A splitscreen share leaves the output to the first player's, as in `should_change_device`.
             let stopped = self.backend.owner == 0
@@ -2845,7 +2866,7 @@ mod tests {
         );
     }
     #[test]
-    #[cfg(feature = "audio")]
+    #[cfg(all(feature = "audio", not(target_os = "horizon")))]
     fn buffer_size_override_and_defaults() {
         let env = |pairs: &'static [(&'static str, &'static str)]| {
             move |name: &str| {

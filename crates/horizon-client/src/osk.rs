@@ -177,6 +177,19 @@ const SYMBOLS_LINES: [Row; 5] = [SYMBOLS[0], SYMBOLS[1], SYMBOLS[2], SYMBOLS[3],
 /// The panel's padding around the keys and the hints, the gap between them, and a hint line's
 /// height in its text size, all in dp (a line box is 1.45 sizes; the pack's font can be a
 /// little taller).
+const KEY_UNIT: f32 = 50.0;
+const KEY_GAP: f32 = 6.0;
+const KEY_HEIGHT: f32 = 38.0;
+
+fn key_rect(x: f32, y: f32, left: f32, units: f32, row: usize) -> [f32; 4] {
+    [
+        x + left * (KEY_UNIT + KEY_GAP),
+        y + row as f32 * (KEY_HEIGHT + KEY_GAP),
+        units * KEY_UNIT + (units - 1.0) * KEY_GAP,
+        KEY_HEIGHT,
+    ]
+}
+
 const PANEL_PAD: f32 = 12.0;
 const HINT_GAP: f32 = 8.0;
 const HINT_LINE: f32 = 1.6;
@@ -433,20 +446,45 @@ impl Keyboard {
         })
     }
 
-    /// Draw the keyboard across the bottom of the screen, or the top when
-    /// the field it types into is in the lower half.
-    pub fn draw(&self, ui: &mut Ui, at_top: bool, glyphs: Glyphs) {
-        const UNIT: f32 = 50.0;
-        const GAP: f32 = 6.0;
-        const KEY_H: f32 = 38.0;
-        const LABEL_PAD: f32 = 4.0;
-        let width = 10.0 * UNIT + 9.0 * GAP;
+    fn layout(&self, ui: &Ui, at_top: bool, glyphs: Glyphs) -> (f32, f32, f32, f32, f32, f32, Vec<String>) {
+        let width = 10.0 * KEY_UNIT + 9.0 * KEY_GAP;
         let hints = self.hint_lines(ui, glyphs, width);
         let line_h = HINT_LINE * ui_theme::small();
-        let keys_h = 5.0 * KEY_H + 4.0 * GAP;
+        let keys_h = 5.0 * KEY_HEIGHT + 4.0 * KEY_GAP;
         let height = PANEL_PAD + keys_h + HINT_GAP + hints.len() as f32 * line_h + PANEL_PAD;
         let x0 = ((ui.w - width) / 2.0).round();
         let y0 = if at_top { 16.0 } else { ui.h - height - 16.0 };
+        (x0, y0, width, height, keys_h, line_h, hints)
+    }
+
+    #[cfg(target_os = "horizon")]
+    pub fn tap(&mut self, ui: &Ui, at_top: bool, glyphs: Glyphs) -> (bool, Option<Output>) {
+        let (x0, y0, width, height, ..) = self.layout(ui, at_top, glyphs);
+        let (x, y) = ui.cursor;
+        if x < x0 - PANEL_PAD || x >= x0 + width + PANEL_PAD
+            || y < y0 - PANEL_PAD || y >= y0 - PANEL_PAD + height
+        {
+            return (false, None);
+        }
+        for (row, keys) in self.rows().iter().enumerate() {
+            for (column, (_, units)) in keys.iter().enumerate() {
+                let (left, _) = Self::span(keys, column);
+                let [kx, ky, kw, kh] = key_rect(x0, y0, left, *units, row);
+                if x >= kx && x < kx + kw && y >= ky && y < ky + kh {
+                    self.row = row;
+                    self.col = column;
+                    return (true, self.press());
+                }
+            }
+        }
+        (true, None)
+    }
+
+    /// Draw the keyboard across the bottom of the screen, or the top when
+    /// the field it types into is in the lower half.
+    pub fn draw(&self, ui: &mut Ui, at_top: bool, glyphs: Glyphs) {
+        const LABEL_PAD: f32 = 4.0;
+        let (x0, y0, width, height, keys_h, line_h, hints) = self.layout(ui, at_top, glyphs);
         ui.rounded(
             x0 - PANEL_PAD,
             y0 - PANEL_PAD,
@@ -464,11 +502,9 @@ impl Keyboard {
             color::border(),
         );
         for (r, row) in self.rows().iter().enumerate() {
-            let y = y0 + r as f32 * (KEY_H + GAP);
             for (i, (key, units)) in row.iter().enumerate() {
                 let (left, _) = Self::span(row, i);
-                let x = x0 + left * (UNIT + GAP);
-                let w = units * UNIT + (units - 1.0) * GAP;
+                let [x, y, w, h] = key_rect(x0, y0, left, *units, r);
                 let focused = r == self.row && i == self.col;
                 let lit = matches!(key, Key::Shift) && (self.shift || self.caps)
                     || matches!(key, Key::Layer) && self.symbols;
@@ -479,7 +515,7 @@ impl Keyboard {
                 } else {
                     (color::raised(), color::text())
                 };
-                ui.rounded(x, y, w, KEY_H, ui_theme::radius(), plate);
+                ui.rounded(x, y, w, h, ui_theme::radius(), plate);
                 let label = match key {
                     Key::Char(ch) => self.letter(*ch),
                     Key::Shift if self.caps => "CAPS".into(),
@@ -498,7 +534,7 @@ impl Keyboard {
                 ui.text_line(
                     Face::Medium,
                     size,
-                    KEY_H,
+                    h,
                     x + ((w - lw) / 2.0).round(),
                     y,
                     ink,

@@ -1,4 +1,5 @@
 {
+  "horizon.options.switch_resolution": "Разрешение",
   "horizon.extras.header.world": "Мир",
   "horizon.extras.pregen": "Предгенерация чанков",
   "horizon.extras.pregen.tooltip": "Включает /pregen в ваших одиночных мирах и мирах по локальной сети. С включёнными читами используйте /pregen start, чтобы создать область до её исследования. Не включает команду на серверах, к которым вы подключаетесь.",

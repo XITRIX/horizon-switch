@@ -795,6 +795,8 @@ pub enum Opt {
     MaxFps,
     Vsync,
     Fullscreen,
+    #[cfg(target_os = "horizon")]
+    SwitchResolution,
     SmoothLighting,
     Clouds,
     CloudRange,
@@ -1242,5 +1244,14 @@ mod tests {
         assert_eq!(again.sound_device, "Headphones");
         let empty = Settings::parse("");
         assert_eq!(empty.sound_device, "");
+    }
+}
+
+#[cfg(target_os = "horizon")]
+pub fn switch_resolution(file: &OptionsFile) -> [u32; 2] {
+    if file.int("switchResolution") == 1 {
+        [1920, 1080]
+    } else {
+        [1280, 720]
     }
 }

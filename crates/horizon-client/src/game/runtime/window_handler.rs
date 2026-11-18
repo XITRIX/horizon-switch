@@ -157,6 +157,24 @@ impl Game<'_> {
             Unclaimed::Passes => {}
         }
         follow_keymap(&mut event);
+        #[cfg(target_os = "horizon")]
+        if let WindowEvent::MouseInput { state, button: MouseButton::Left, .. } = &event {
+            if self.pad_osk_pointer(*state) {
+                return;
+            }
+            if self.screen == Screen::Playing && self.title.is_none() {
+                let (width, height) = self.gui_size();
+                let (x, y) = self.cursor;
+                let left = width / 2.0 - 90.0;
+                if *state == ElementState::Pressed
+                    && (height - 22.0..=height).contains(&y)
+                    && (left..left + 180.0).contains(&x)
+                {
+                    let _ = self.select_hotbar_slot(((x - left) / 20.0) as u8);
+                }
+                return;
+            }
+        }
         // MacosUtil.setCtrlClickEmulatesRightClick: Control + left click is a right click.
         if let WindowEvent::MouseInput { state, button, .. } = &mut event
             && *button == MouseButton::Left

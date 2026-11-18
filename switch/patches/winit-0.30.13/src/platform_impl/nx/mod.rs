@@ -15,8 +15,7 @@ mod event_loop;
 pub use self::window::Window;
 mod window;
 
-/// The framebuffer the game renders into, in both handheld and docked mode (the system scales
-/// it to the TV).
+/// Default framebuffer size and the fixed coordinate space for touch.
 pub(crate) const WIDTH: u32 = 1280;
 pub(crate) const HEIGHT: u32 = 720;
 
@@ -51,11 +50,13 @@ pub(crate) mod ffi {
 
     extern "C" {
         pub fn nwindowGetDefault() -> *mut c_void;
+        pub fn nwindowSetDimensions(window: *mut c_void, width: u32, height: u32) -> u32;
+        pub fn nxshim_set_display_size(width: u32, height: u32) -> u32;
         pub fn appletMainLoop() -> bool;
         pub fn appletGetFocusState() -> u8;
         pub fn appletGetOperationMode() -> u8;
         pub fn hidInitialize() -> u32;
-        pub fn hidInitializeTouchScreen();
+        pub fn nxshim_init_touch();
         pub fn hidGetTouchScreenStates(states: *mut HidTouchScreenState, count: usize) -> usize;
     }
 }

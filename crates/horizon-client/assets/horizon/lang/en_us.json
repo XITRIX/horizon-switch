@@ -1,4 +1,5 @@
 {
+  "horizon.options.switch_resolution": "Resolution",
   "horizon.no_resources.title": "No prepared game files",
   "horizon.no_resources.prepare": "Prepare them with horizon-prepare --prepare, or pass --resources <folder>.",
   "horizon.no_resources.looked_in": "No prepared game files in %s",

@@ -4856,6 +4856,39 @@ impl Renderer {
             pipeline.resize([width, height]);
         }
     }
+    #[cfg(target_os = "horizon")]
+    pub fn set_switch_resolution(&mut self, [width, height]: [u32; 2]) -> Result<bool> {
+        use winit::dpi::PhysicalSize;
+
+        if self.surface.is_none() {
+            return Ok(false);
+        }
+        let previous = PhysicalSize::new(self.config.width, self.config.height);
+        let wanted = PhysicalSize::new(width, height);
+        self.frame_gen.stop_to_configure();
+        self.device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(std::time::Duration::from_secs(5)),
+        })?;
+        if self.window.request_inner_size(wanted) != Some(wanted) {
+            log::warn!("Horizon: the display did not accept {width}x{height}");
+            return Ok(false);
+        }
+        self.resize(width, height);
+        if self.surface_unconfigured || self.suspended {
+            if self.window.request_inner_size(previous) != Some(previous) {
+                return Err("The Switch display could not restore its previous size".into());
+            }
+            self.resize(previous.width, previous.height);
+            if self.surface_unconfigured || self.suspended {
+                return Err("The Switch swapchain could not restore its previous size".into());
+            }
+            return Ok(false);
+        }
+        log::info!("Horizon: Switch framebuffer set to {width}x{height}");
+        Ok(true)
+    }
+
     /// Whether sections are drawn as one index list per frame (`flat`).
     pub fn flat_draws(&self) -> bool {
         self.flat_on

@@ -440,7 +440,7 @@ pub(crate) fn install_client_hooks() {
 /// 1024 in a container). The same here; macOS caps it at `OPEN_MAX`, as the
 /// JVM does there.
 fn raise_open_file_limit() {
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "horizon")))]
     {
         use rustix::process::{Resource, Rlimit, getrlimit, setrlimit};
         let limit = getrlimit(Resource::Nofile);

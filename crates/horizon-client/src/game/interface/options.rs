@@ -374,6 +374,8 @@ impl Game<'_> {
                 Event::ButtonClick => self.audio.play_button_click(),
                 Event::DebugEntriesChanged => self.debug_entries.invalidate(),
                 Event::Changed => {
+                    #[cfg(target_os = "horizon")]
+                    self.apply_switch_resolution()?;
                     self.settings.save(&Self::options_path());
                     self.settings.keys.sync_action_bindings();
                     self.apply_settings();
@@ -708,6 +710,26 @@ impl Game<'_> {
             );
             self.build_screen();
         }
+    }
+    #[cfg(target_os = "horizon")]
+    pub(in crate::game) fn apply_switch_resolution(&mut self) -> Result<()> {
+        let size = horizon_client::settings::switch_resolution(&self.settings.file);
+        let Some(renderer) = &mut self.renderer else {
+            return Ok(());
+        };
+        if self.options.offscreen || size == [renderer.config.width, renderer.config.height] {
+            return Ok(());
+        }
+        // Keep the last working mode on disk until the driver accepts the new one.
+        let key = "switchResolution";
+        let previous = i32::from(renderer.config.height == 1080);
+        self.settings.file.set(key, horizon_client::options_file::V::Int(previous));
+        self.settings.save(&Self::options_path());
+        if renderer.set_switch_resolution(size)? {
+            self.settings.file.set(key, horizon_client::options_file::V::Int(i32::from(size[1] == 1080)));
+            self.settings.save(&Self::options_path());
+        }
+        Ok(())
     }
     /// `Window.updateFullscreenState`: a fullscreen change made by the window
     /// system is adopted by the option (`Minecraft.fullscreenStateChanged`).

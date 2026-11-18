@@ -159,6 +159,9 @@ pub(super) struct MenuCursor {
     repeats: u32,
     /// The on-screen keyboard, open over a text field.
     pub(super) osk: Option<Keyboard>,
+    osk_at_top: bool,
+    #[cfg(target_os = "horizon")]
+    osk_pointer_held: bool,
     /// The recipe being crafted straight into the inventory (`pad_craft`).
     pub(super) craft: Option<super::pad_craft::DirectCraft>,
     /// LT held over the crafting book: it changes the category as it comes up, unless A was
@@ -2088,6 +2091,10 @@ impl Game<'_> {
             return;
         }
         let suggests = self.screen == Screen::Chat && self.title.is_none() && !self.dialog_open();
+        self.pad.menu.osk_at_top = self.screen == Screen::Chat
+            || self.gui_batch().is_some_and(|batch| {
+                self.pad.menu.focus.is_some_and(|focus| focus.center().1 > batch.height / 2.0)
+            });
         self.pad.menu.osk = Some(Keyboard::new(self.pad_enter_keeps_typing(), suggests));
     }
 
@@ -2269,6 +2276,31 @@ impl Game<'_> {
         }
     }
 
+    #[cfg(target_os = "horizon")]
+    pub(in crate::game) fn pad_osk_pointer(&mut self, state: winit::event::ElementState) -> bool {
+        if state == winit::event::ElementState::Released {
+            return std::mem::take(&mut self.pad.menu.osk_pointer_held);
+        }
+        if self.pad.menu.osk.is_none() {
+            return false;
+        }
+        let Some(mut batch) = self.gui_batch() else {
+            return false;
+        };
+        let ui = horizon_client::ui_theme::Ui::new(&self.gui.atlas, &mut batch, self.cursor);
+        let menu = &mut self.pad.menu;
+        let (captured, output) = menu
+            .osk
+            .as_mut()
+            .expect("the keyboard is open")
+            .tap(&ui, menu.osk_at_top, self.ui.options.pad_glyphs);
+        menu.osk_pointer_held = captured;
+        if let Some(output) = output {
+            self.pad_osk_output(output);
+        }
+        captured
+    }
+
     // ---- drawing ----
 
     /// The pad's cursor (pointer mode) or focus highlight (focus mode), and
@@ -2280,15 +2312,9 @@ impl Game<'_> {
             return;
         }
         if let Some(keyboard) = &self.pad.menu.osk {
-            let at_top = self
-                .pad
-                .menu
-                .focus
-                .is_some_and(|f| f.center().1 > batch.height / 2.0)
-                || self.screen == Screen::Chat;
             let mut ui = horizon_client::ui_theme::Ui::new(&self.gui.atlas, batch, self.cursor);
             let options = &self.ui.options;
-            keyboard.draw(&mut ui, at_top, options.pad_glyphs);
+            keyboard.draw(&mut ui, self.pad.menu.osk_at_top, options.pad_glyphs);
             ui.finish();
             return;
         }
