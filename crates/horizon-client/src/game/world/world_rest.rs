@@ -35,8 +35,8 @@ pub(super) fn load_world_rest(
         files: &files,
     };
     progress.set(6);
-    // Independent tables load together, within the worker budget the settings
-    // allow. Only the recipes and the stations read another table: the items.
+    // Independent tables load together on desktop. On Switch the background
+    // world loader processes its tables in order while the title can render.
     let load_items = || -> Result<_> {
         let mut items = startup::time("rest.items", || {
             Items::load(root, registry, facts, overlay, resources.item_defaults())
@@ -192,7 +192,7 @@ pub(super) fn load_world_rest(
         ambient,
         nether_environment,
         end_environment,
-    ) = if threads > 1 {
+    ) = if threads > 1 && !cfg!(target_os = "horizon") {
         std::thread::scope(|scope| {
             let items = named_scope(scope, "items", || text(load_items()));
             let behaviours = named_scope(scope, "behaviours", || text(load_behaviours()));

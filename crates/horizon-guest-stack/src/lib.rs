@@ -4,9 +4,16 @@
 mod constants;
 pub use constants::{GUEST_STACK_BYTES, HOST_HEADROOM};
 
+/// Stack reservation for engine workers. Switch does not load WebAssembly guests.
+pub const WORKER_STACK_BYTES: usize = if cfg!(target_os = "horizon") {
+    HOST_HEADROOM
+} else {
+    GUEST_STACK_BYTES + HOST_HEADROOM
+};
+
 /// Spawn guarantees the reservation even on platforms without a stack-size query.
 pub fn builder() -> std::thread::Builder {
-    std::thread::Builder::new().stack_size(GUEST_STACK_BYTES + HOST_HEADROOM)
+    std::thread::Builder::new().stack_size(WORKER_STACK_BYTES)
 }
 
 /// Starts a thread that may enter a guest: guest-sized and named `name`, and in debug builds it
@@ -16,6 +23,7 @@ pub fn spawn<T: Send + 'static>(
     body: impl FnOnce() -> T + Send + 'static,
 ) -> std::io::Result<std::thread::JoinHandle<T>> {
     builder().name(name).spawn(move || {
+        #[cfg(not(target_os = "horizon"))]
         debug_assert_eq!(
             check_current(),
             Ok(()),
