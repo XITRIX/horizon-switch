@@ -11072,10 +11072,24 @@ impl Renderer {
             if self.config.present_mode == wgpu::PresentMode::Fifo {
                 self.window.pre_present_notify();
             }
+            #[cfg(target_os = "horizon")]
+            if first_frame {
+                startup_step(format_args!("waiting for the first frame to finish rendering"));
+                if let Err(error) = self.device.poll(wgpu::PollType::Wait {
+                    submission_index: Some(submission.clone()),
+                    timeout: Some(std::time::Duration::from_secs(5)),
+                }) {
+                    return Err(format!("first frame did not finish rendering: {error}").into());
+                }
+            }
             if first_frame {
                 startup_step(format_args!("presenting the first frame"));
             }
             self.queue.present(surface_frame);
+            #[cfg(target_os = "horizon")]
+            if first_frame {
+                startup_step(format_args!("the first frame was presented"));
+            }
             if self.hdr.is_some()
                 && let Some(marker) = self.hdr_marker.take()
             {

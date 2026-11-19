@@ -43,13 +43,19 @@ pub(super) fn set_up_surface(
     if caps.usages.contains(wgpu::TextureUsages::COPY_SRC) {
         config.usage |= wgpu::TextureUsages::COPY_SRC;
     }
-    if caps.usages.contains(wgpu::TextureUsages::COPY_DST) {
+    // Switch uses the native window's render targets directly. The desktop
+    // frame generation path is the only consumer of swapchain COPY_DST.
+    if !cfg!(target_os = "horizon") && caps.usages.contains(wgpu::TextureUsages::COPY_DST) {
         config.usage |= wgpu::TextureUsages::COPY_DST;
     }
     config.present_mode = keep_mode
         .filter(|mode| caps.present_modes.contains(mode))
         .unwrap_or_else(|| {
-            if caps.present_modes.contains(&wgpu::PresentMode::Mailbox) {
+            // Start the native window with a paced swapchain. Later renderer
+            // replacements keep the mode applied by the player's video settings.
+            if !cfg!(target_os = "horizon")
+                && caps.present_modes.contains(&wgpu::PresentMode::Mailbox)
+            {
                 wgpu::PresentMode::Mailbox
             } else {
                 wgpu::PresentMode::Fifo
