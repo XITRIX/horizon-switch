@@ -182,7 +182,7 @@ impl Options {
         let LaunchArguments { context, rest } = launch;
         #[cfg(target_os = "horizon")]
         let sibling = {
-            let home = Path::new(horizon_client::logging::SWITCH_HOME);
+            let home = std::path::Path::new(horizon_client::logging::SWITCH_HOME);
             let folder = home.join("resources");
             match horizon_nx::romfs::mount(&home.join("resources.romfs"), "hres") {
                 Some(root) => root,

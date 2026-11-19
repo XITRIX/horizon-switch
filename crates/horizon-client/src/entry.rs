@@ -168,8 +168,8 @@ pub fn start<G>(
     log::info!("Horizon {}", crash::version());
     #[cfg(target_os = "horizon")]
     {
-        if !horizon_nx::net_init() {
-            log::warn!("Horizon: Switch network unavailable");
+        if let Err(code) = horizon_nx::net_init() {
+            log::warn!("Horizon: Switch network unavailable ({code:#x})");
         }
         let (total, used) = horizon_nx::memory::usage();
         log::info!("Horizon: Switch build {}, memory {} MiB of {} MiB used",
