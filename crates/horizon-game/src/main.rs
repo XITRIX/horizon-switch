@@ -6,15 +6,11 @@
 static GAME_IDENTITY: [u8; horizon_mod_package::game_identity::MARK.len()] =
     horizon_mod_package::game_identity::MARK;
 
-#[cfg(target_os = "horizon")]
-#[global_allocator]
-static ALLOCATOR: horizon_nx::alloc::Allocator = horizon_nx::alloc::Allocator;
-
 fn main() {
     #[cfg(not(target_os = "horizon"))]
     horizon_guest_stack::prepare_main();
     std::hint::black_box(&GAME_IDENTITY);
     horizon_game::main();
     #[cfg(target_os = "horizon")]
-    horizon_nx::exit_now();
+    horizon_nx::exit_successfully();
 }
