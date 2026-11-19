@@ -1253,7 +1253,7 @@ fn output_disabled(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<S
         return None;
     }
     let display = var("WAYLAND_DISPLAY")?;
-    Path::new(&display)
+    std::path::Path::new(&display)
         .components()
         .any(|c| c.as_os_str() == "vscreen")
         .then(|| "audio off on a virtual screen (vscreen); HORIZON_AUDIO=1 opens it".into())

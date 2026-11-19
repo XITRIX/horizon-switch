@@ -170,3 +170,12 @@ pub struct KeyEventExtra {
     pub key_without_modifiers: Key,
     pub text_with_all_modifiers: Option<SmolStr>,
 }
+
+// The Switch backend emits touch and controller events, with no physical keyboard codes.
+pub fn physicalkey_to_scancode(_: crate::keyboard::PhysicalKey) -> Option<u32> {
+    None
+}
+
+pub fn scancode_to_physicalkey(_: u32) -> crate::keyboard::PhysicalKey {
+    crate::keyboard::PhysicalKey::Unidentified(crate::keyboard::NativeKeyCode::Unidentified)
+}
