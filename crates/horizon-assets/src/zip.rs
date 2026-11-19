@@ -39,14 +39,33 @@ pub struct Zip {
 fn invalid(e: impl std::fmt::Display) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, e.to_string())
 }
-/// `file`'s bytes at `at`, which any number of readers may do at once: the
-/// file has no cursor for them to share.
-fn read_at(file: &fs::File, out: &mut [u8], at: u64) -> io::Result<usize> {
-    #[cfg(unix)]
+#[cfg(target_os = "horizon")]
+struct ArchiveFile(std::sync::Mutex<fs::File>);
+
+#[cfg(target_os = "horizon")]
+impl ArchiveFile {
+    fn metadata(&self) -> io::Result<fs::Metadata> {
+        self.0.lock().map_err(|_| io::Error::other("archive file lock poisoned"))?.metadata()
+    }
+}
+
+#[cfg(not(target_os = "horizon"))]
+type ArchiveFile = fs::File;
+
+/// Read from an archive snapshot. Switch serializes seeks and reads on its
+/// shared file because the SDK does not provide positional reads.
+fn read_at(file: &ArchiveFile, out: &mut [u8], at: u64) -> io::Result<usize> {
+    #[cfg(target_os = "horizon")]
+    {
+        let mut file = file.0.lock().map_err(|_| io::Error::other("archive file lock poisoned"))?;
+        file.seek(SeekFrom::Start(at))?;
+        file.read(out)
+    }
+    #[cfg(all(unix, not(target_os = "horizon")))]
     return std::os::unix::fs::FileExt::read_at(file, out, at);
     #[cfg(windows)]
     return std::os::windows::fs::FileExt::seek_read(file, out, at);
-    #[cfg(not(any(unix, windows)))]
+    #[cfg(not(any(unix, windows, target_os = "horizon")))]
     {
         let _ = (file, out, at);
         Err(io::Error::new(
@@ -56,7 +75,7 @@ fn read_at(file: &fs::File, out: &mut [u8], at: u64) -> io::Result<usize> {
     }
 }
 /// The bytes of `file` from `start` to `end`.
-fn read_range(file: &fs::File, start: u64, end: u64) -> io::Result<Vec<u8>> {
+fn read_range(file: &ArchiveFile, start: u64, end: u64) -> io::Result<Vec<u8>> {
     let mut out = vec![0; (end - start) as usize];
     let mut done = 0;
     while done < out.len() {
@@ -73,7 +92,7 @@ fn read_range(file: &fs::File, start: u64, end: u64) -> io::Result<Vec<u8>> {
 #[derive(Clone)]
 struct Reader {
     /// What comes before the tail; none when the tail is the whole archive.
-    file: Option<Arc<fs::File>>,
+    file: Option<Arc<ArchiveFile>>,
     tail: Arc<[u8]>,
     tail_at: u64,
     position: u64,
@@ -141,6 +160,8 @@ impl Zip {
     /// gigabytes for its `pack.mcmeta` costs what opening a small one does.
     pub fn open(path: &Path) -> io::Result<Self> {
         let file = fs::File::open(path)?;
+        #[cfg(target_os = "horizon")]
+        let file = ArchiveFile(std::sync::Mutex::new(file));
         let len = file.metadata()?.len();
         let mut tail_at = len.saturating_sub((END_HEADER + u16::MAX as usize) as u64);
         let mut tail = read_range(&file, tail_at, len)?;

@@ -22,7 +22,7 @@ sed -e "s|@SWITCH_DIR@|$SWITCH_DIR|g" -e "s|@SWITCH_BUILD@|$SWITCH_BUILD|g" \
     -e "s|@SWITCH_RUST_CPU@|$SWITCH_RUST_CPU|g" -e "s|@SWITCH_GRAPHICS@|$SWITCH_GRAPHICS|g" \
     "$SWITCH_DIR/cargo-config.toml" > "$SWITCH_BUILD/cargo-config.toml"
 
-NX_BUILD=$(date +%H%M) cargo +"${RUST_TOOLCHAIN:-nightly}" build --release --locked \
+NX_BUILD="${NX_BUILD:-$(date +%H%M)}" cargo +"${RUST_TOOLCHAIN:-nightly}" build --release --locked \
     --config "$SWITCH_BUILD/cargo-config.toml" \
     -p horizon-game --no-default-features --bin horizon-client
 cp "${CARGO_TARGET_DIR:-target}/aarch64-nintendo-switch-newlib/release/horizon-client.elf" "$SWITCH_BUILD/horizon.elf"
