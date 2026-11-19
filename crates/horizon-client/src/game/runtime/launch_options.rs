@@ -184,7 +184,15 @@ impl Options {
         let sibling = {
             let home = std::path::Path::new(horizon_client::logging::SWITCH_HOME);
             let folder = home.join("resources");
-            match horizon_nx::romfs::mount(&home.join("resources.romfs"), "hres") {
+            // A rebased test build can use its own prepared pack beside the
+            // previous release's pack. Both use the same saves and settings.
+            let updated_pack = home.join("resources-rebase.romfs");
+            let pack = if updated_pack.is_file() {
+                updated_pack
+            } else {
+                home.join("resources.romfs")
+            };
+            match horizon_nx::romfs::mount(&pack, "hres") {
                 Some(root) => root,
                 None => {
                     horizon_client::logging::unpack_switch_resources(&folder)?;

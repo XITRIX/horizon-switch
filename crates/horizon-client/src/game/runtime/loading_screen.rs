@@ -131,6 +131,12 @@ impl Loading {
             horizon_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
+        // On Switch the first renderer uses the real title atlas. The loader
+        // publishes it separately while the world tables continue loading.
+        if cfg!(target_os = "horizon") {
+            self.window = Some(window);
+            return;
+        }
         // The renderer takes seconds to build and winit's window sits white
         // until the first frame presents, so paint the boot screen on it and
         // keep repainting it as the console's lines arrive; the wgpu frames
@@ -297,6 +303,13 @@ impl Loading {
         if let Some(renderer) = &mut self.renderer {
             match renderer.render(&frame) {
                 Ok(true) if self.gui.is_some() && self.menu.pending.is_none() => {
+                    #[cfg(target_os = "horizon")]
+                    if !self.title_drawn {
+                        log::info!(
+                            "Horizon: title screen drawn after {} ms",
+                            self.started.elapsed().as_millis()
+                        );
+                    }
                     self.title_drawn = true;
                 }
                 Ok(_) => {}

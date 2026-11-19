@@ -11243,52 +11243,33 @@ pub(crate) fn run_with(
     // Snapshots of derived tables live in the game folder, never beside the
     // shared resources.
     Behaviours::set_cache_dir(std::env::current_dir()?.join(".horizon-cache"));
-    let synchronous = synchronous_startup(&options);
-    let switch_boot = cfg!(target_os = "horizon") && !synchronous && !options.offscreen;
-    if !synchronous && !switch_boot {
+    if !synchronous_startup(&options) {
         return run_loading(options, early_settings, vanilla_root, None, started);
     }
-    let progress = Progress::new();
-    let read_resources = || -> Result<Loaded> {
-        let mut pack_error = None;
-        let selected_root = packs::startup_root(
-            &vanilla_root,
-            &early_settings.resource_packs,
-            &[],
-            &options.mods,
-        )
-        .or_else(|e| {
-            log::warn!("Horizon: resource packs not applied: {e}");
-            pack_error = Some(e.to_string());
-            mods::content_root(&vanilla_root, &options.mods)
-        })?;
-        let mut loaded = load_resources(
-            selected_root,
-            pack_finders::data_packs(&options.mods),
-            launch_world(&options),
-            &vanilla_root,
-            &early_settings,
-            started,
-            false,
-            mods::LoadRole::startup(options.execution_role),
-            &progress,
-            &mut |_, _| {},
-        )?;
-        loaded.pack_error = loaded.pack_error.or(pack_error);
-        Ok(loaded)
-    };
-    #[cfg(target_os = "horizon")]
-    let mut loaded = if switch_boot {
-        let Some(loaded) = resource_load::with_switch_loading_console(&progress, read_resources)? else {
-            narrator::stop();
-            return Ok(());
-        };
-        loaded
-    } else {
-        read_resources()?
-    };
-    #[cfg(not(target_os = "horizon"))]
-    let mut loaded = read_resources()?;
+    let mut pack_error = None;
+    let selected_root = packs::startup_root(
+        &vanilla_root,
+        &early_settings.resource_packs,
+        &[],
+        &options.mods,
+    )
+    .or_else(|e| {
+        log::warn!("Horizon: resource packs not applied: {e}");
+        pack_error = Some(e.to_string());
+        mods::content_root(&vanilla_root, &options.mods)
+    })?;
+    let mut loaded = load_resources(
+        selected_root,
+        pack_finders::data_packs(&options.mods),
+        launch_world(&options),
+        &vanilla_root,
+        &early_settings,
+        started,
+        false,
+        mods::LoadRole::startup(options.execution_role),
+        &Progress::new(),
+        &mut |_, _| {},
+    )?;
     let gui = loaded.gui.ok_or("missing menu bundle")?;
     options.resources = loaded.root.clone();
     let audio = if !options.execution_role.is_client() || options.headless {
@@ -11302,7 +11283,7 @@ pub(crate) fn run_with(
         loaded.pack,
         gui,
         options,
-        loaded.pack_error,
+        loaded.pack_error.or(pack_error),
         audio,
         vanilla_root,
         started,
