@@ -254,6 +254,8 @@ impl Opt {
             Opt::Fullscreen => "options.fullscreen",
             #[cfg(target_os = "horizon")]
             Opt::SwitchResolution => "Resolution",
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchVrr => "Variable Refresh Rate",
             Opt::ExclusiveFullscreen => "options.exclusiveFullscreen",
             Opt::ExclusiveMode => "options.fullscreen.exclusive.mode",
             Opt::GraphicsBackend => "options.graphicsApi",
@@ -795,6 +797,8 @@ impl Opt {
             Opt::AllowCursorChanges => on_off(s.allow_cursor_changes),
             Opt::ViewBobbing => on_off(s.view_bobbing),
             Opt::Vsync => on_off(s.vsync),
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchVrr => on_off(s.file.bool("switchVrr")),
             Opt::Fullscreen => on_off(s.fullscreen),
             #[cfg(target_os = "horizon")]
             Opt::SwitchResolution => Text::literal(format!("{}p", crate::settings::switch_resolution(&s.file)[1])),
@@ -1105,6 +1109,11 @@ impl Opt {
             Opt::AllowCursorChanges => s.allow_cursor_changes = !s.allow_cursor_changes,
             Opt::ViewBobbing => s.view_bobbing = !s.view_bobbing,
             Opt::Vsync => s.vsync = !s.vsync,
+            #[cfg(target_os = "horizon")]
+            Opt::SwitchVrr => s.file.set(
+                "switchVrr",
+                crate::options_file::V::Bool(!s.file.bool("switchVrr")),
+            ),
             Opt::Fullscreen => s.fullscreen = !s.fullscreen,
             #[cfg(target_os = "horizon")]
             Opt::SwitchResolution => s.file.set("switchResolution", crate::options_file::V::Int(i32::from(s.file.int("switchResolution") == 0))),

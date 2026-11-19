@@ -1800,9 +1800,9 @@ pub struct Renderer {
     pub info: wgpu::AdapterInfo,
     pub suspended: bool,
     #[cfg(target_os = "horizon")]
-    switch_high_refresh: Option<bool>,
+    switch_display_preference: Option<(bool, bool)>,
     #[cfg(target_os = "horizon")]
-    switch_refresh_hz: Option<i32>,
+    switch_display_mode: Option<(u32, Option<bool>)>,
     /// Consecutive frames whose surface acquisition failed validation. The
     /// first gets the swapchain a fresh configuration; later ones reattach
     /// the window, as a lost surface does.
@@ -4584,9 +4584,9 @@ impl Renderer {
             info,
             suspended: !drawable_size(size.width, size.height, max_side),
             #[cfg(target_os = "horizon")]
-            switch_high_refresh: None,
+            switch_display_preference: None,
             #[cfg(target_os = "horizon")]
-            switch_refresh_hz: None,
+            switch_display_mode: None,
             acquire_validation_failures: 0,
             surface_unconfigured: false,
             drawn_sections: 0,
@@ -4868,15 +4868,17 @@ impl Renderer {
         }
     }
     #[cfg(target_os = "horizon")]
-    pub fn set_switch_refresh_limit(&mut self, limit: u32, battery: bool) {
+    pub fn set_switch_display_preference(&mut self, limit: u32, battery: bool, vrr: bool) {
         let high_refresh = limit > 60 && !battery;
-        if self.surface.is_none() || self.switch_high_refresh == Some(high_refresh) {
+        let preference = (high_refresh, vrr);
+        if self.surface.is_none() || self.switch_display_preference == Some(preference) {
             return;
         }
-        self.switch_high_refresh = Some(high_refresh);
-        self.switch_refresh_hz = None;
-        if let Err(code) = horizon_nx::set_high_refresh(high_refresh) {
-            log::warn!("Horizon: the Switch display rate request failed (0x{code:08x})");
+        self.switch_display_preference = Some(preference);
+        self.switch_display_mode = None;
+        match horizon_nx::set_display_preference(high_refresh, vrr) {
+            Ok(()) => log::info!("Horizon: Switch display preference submitted (120 Hz: {high_refresh}, VRR: {vrr})"),
+            Err(code) => log::warn!("Horizon: the Switch display preference failed (0x{code:08x})"),
         }
     }
     #[cfg(target_os = "horizon")]
@@ -4884,23 +4886,24 @@ impl Renderer {
         if self.surface.is_none() {
             return false;
         }
-        let refresh_hz = self
-            .window
-            .current_monitor()
-            .and_then(|monitor| monitor.refresh_rate_millihertz())
-            .map_or(60, |mhz| mhz.div_ceil(1000) as i32);
-        let presentation_fps = if self.switch_high_refresh == Some(true) {
+        let mode @ (refresh_hz, vrr_active) = horizon_nx::display_mode();
+        let presentation_fps = if self.switch_display_preference.is_some_and(|(high, _)| high) {
             refresh_hz
         } else {
             refresh_hz.min(60)
         };
-        if self.switch_refresh_hz != Some(refresh_hz) {
-            self.switch_refresh_hz = Some(refresh_hz);
+        if self.switch_display_mode != Some(mode) {
+            self.switch_display_mode = Some(mode);
+            let vrr = match vrr_active {
+                Some(true) => "active",
+                Some(false) => "inactive",
+                None => "unknown",
+            };
             log::info!(
-                "Horizon: Switch display is running at {refresh_hz} Hz, up to {presentation_fps} presented FPS"
+                "Horizon: Switch display is running at {refresh_hz} Hz, up to {presentation_fps} presented FPS, VRR {vrr}"
             );
         }
-        self.config.present_mode == wgpu::PresentMode::Fifo && limit >= presentation_fps
+        self.config.present_mode == wgpu::PresentMode::Fifo && limit >= presentation_fps as i32
     }
     #[cfg(target_os = "horizon")]
     pub fn set_switch_resolution(&mut self, [width, height]: [u32; 2]) -> Result<bool> {

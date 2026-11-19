@@ -203,6 +203,8 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                 "The display mode exclusive fullscreen uses. Applies when you leave.",
             ),
             v(Opt::Vsync, None, "Waits for the display's refresh to avoid tearing."),
+            #[cfg(target_os = "horizon")]
+            v(Opt::SwitchVrr, None, "Allows the display to vary its refresh rate."),
             #[cfg(not(target_os = "horizon"))]
             max_fps,
             v(Opt::InactivityFps, None, "Lowers the frame rate when minimised, or idle too."),
@@ -729,6 +731,15 @@ fn description(
     out: &EffectiveOutput,
     text: &'static str,
 ) -> &'static str {
+    #[cfg(target_os = "horizon")]
+    if item == Item::Vanilla(Opt::SwitchVrr) {
+        return match horizon_nx::display_mode().1 {
+            Some(true) => "VRR is active on the current display.",
+            Some(false) if s.file.bool("switchVrr") => "VRR is allowed and currently inactive.",
+            Some(false) => "VRR is off on the current display.",
+            None => "The current display's VRR status is unavailable.",
+        };
+    }
     match (item, setup(s, out)) {
         (Item::Horizon(H::Hdr), _) if out.held => HDR_HELD,
         (Item::Horizon(H::HdrCalibrate), Setup::Unknown) => {
@@ -1279,6 +1290,8 @@ impl Item {
                 g.translucent_batching && crate::graphics::translucent_batching_offered()
             }
             Item::Vanilla(Opt::Vsync) => s.vsync,
+            #[cfg(target_os = "horizon")]
+            Item::Vanilla(Opt::SwitchVrr) => s.file.bool("switchVrr"),
             Item::Extra(e) => return e.switch(&s.extras),
             Item::Vanilla(Opt::Fullscreen) => s.fullscreen,
             Item::Vanilla(Opt::ExclusiveFullscreen) => s.file.bool("exclusiveFullscreen"),
@@ -1350,7 +1363,7 @@ impl Item {
     /// A preset no longer describes the settings once one of them changes.
     fn touched(self, s: &mut Settings) {
         #[cfg(target_os = "horizon")]
-        if self == Item::Vanilla(Opt::SwitchResolution) {
+        if matches!(self, Item::Vanilla(Opt::SwitchResolution | Opt::SwitchVrr)) {
             return;
         }
         let presetless = matches!(
@@ -1452,10 +1465,12 @@ fn row(setting: Setting, s: &Settings, out: &EffectiveOutput) -> Row<Item> {
 }
 
 /// The vanilla rows `options.txt` keeps as it read them, not in `Settings`' own fields.
-const FILE_KEYS: [&str; 4 + cfg!(target_os = "horizon") as usize] = [
+const FILE_KEYS: [&str; 4 + 2 * cfg!(target_os = "horizon") as usize] = [
     "exclusiveFullscreen",
     #[cfg(target_os = "horizon")]
     "switchResolution",
+    #[cfg(target_os = "horizon")]
+    "switchVrr",
     "textureFiltering",
     "maxAnisotropyBit",
     "fovEffectScale",
@@ -1533,6 +1548,8 @@ impl Screen for GraphicsScreen {
             g::translucent_batching_offered(),
             g::gpu_culling_offer(),
             g::reduced_far_detail_suggested(),
+            #[cfg(target_os = "horizon")]
+            horizon_nx::display_mode().1,
         );
         shell::stamp_of(&(read(s), s.fullbright_held, &s.running_pack, offers))
     }

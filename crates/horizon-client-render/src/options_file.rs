@@ -148,6 +148,8 @@ static TABLE: LazyLock<Vec<Def>> = LazyLock::new(|| {
         b("fullscreen", false),
         #[cfg(target_os = "horizon")]
         n("switchResolution", &["720p", "1080p"], 0),
+        #[cfg(target_os = "horizon")]
+        b("switchVrr", true),
         b("exclusiveFullscreen", false),
         b("macFullscreenMenuVisibility", false),
         u("gamma", 0.5),

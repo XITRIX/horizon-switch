@@ -797,6 +797,8 @@ pub enum Opt {
     Fullscreen,
     #[cfg(target_os = "horizon")]
     SwitchResolution,
+    #[cfg(target_os = "horizon")]
+    SwitchVrr,
     SmoothLighting,
     Clouds,
     CloudRange,

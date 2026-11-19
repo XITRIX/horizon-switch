@@ -634,7 +634,7 @@ impl Game<'_> {
             r.improved_transparency = s.improved_transparency;
             r.set_present_mode(s.vsync, s.horizon.present_mode);
             #[cfg(target_os = "horizon")]
-            r.set_switch_refresh_limit(s.max_fps, s.horizon.battery);
+            r.set_switch_display_preference(s.max_fps, s.horizon.battery, s.file.bool("switchVrr"));
             r.animated_textures = s.horizon.animated_textures;
             r.screenshot_quality = s.horizon.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);

@@ -399,12 +399,13 @@ static Mutex nx_display_rate_lock;
 static bool nx_display_rate_configured;
 static u64 nx_display_rate_checked_at;
 static u32 nx_display_refresh_hz = 60;
+static int nx_display_vrr = -1;
 #endif
 
-Result nxshim_set_high_refresh(bool enabled) {
+Result nxshim_set_display_preference(bool high_refresh, bool vrr) {
 #ifdef __SWITCH2__
     mutexLock(&nx_display_rate_lock);
-    Result result = nwindowSetFrameRates(nwindowGetDefault(), enabled ? 120 : 60, 60, true);
+    Result result = nwindowSetFrameRates(nwindowGetDefault(), high_refresh ? 120 : 60, 60, vrr);
     if (R_SUCCEEDED(result)) {
         nx_display_rate_configured = true;
         nx_display_rate_checked_at = 0;
@@ -412,12 +413,13 @@ Result nxshim_set_high_refresh(bool enabled) {
     mutexUnlock(&nx_display_rate_lock);
     return result;
 #else
-    (void)enabled;
+    (void)high_refresh;
+    (void)vrr;
     return 0;
 #endif
 }
 
-u32 nxshim_display_refresh_millihertz(void) {
+u32 nxshim_get_display_mode(int *vrr_state) {
 #ifdef __SWITCH2__
     mutexLock(&nx_display_rate_lock);
     const u64 now = armGetSystemTick();
@@ -432,14 +434,27 @@ u32 nxshim_display_refresh_millihertz(void) {
         if (R_SUCCEEDED(nwindowGetVi2Display(nwindowGetDefault(), &display)) &&
                 R_SUCCEEDED(vi2QueryDisplayRefreshRate(display, &hz, &vrr))) {
             nx_display_refresh_hz = hz;
+            nx_display_vrr = vrr;
+        } else {
+            nx_display_vrr = -1;
         }
     }
     const u32 millihertz = nx_display_refresh_hz * 1000;
+    if (vrr_state) {
+        *vrr_state = nx_display_vrr;
+    }
     mutexUnlock(&nx_display_rate_lock);
     return millihertz;
 #else
+    if (vrr_state) {
+        *vrr_state = 0;
+    }
     return 60000;
 #endif
+}
+
+u32 nxshim_display_refresh_millihertz(void) {
+    return nxshim_get_display_mode(NULL);
 }
 
 bool nxshim_sd_space(int64_t *total, int64_t *free) {

@@ -246,6 +246,14 @@ impl Loading {
         ) {
             Ok(r) => {
                 self.renderer = Some(r);
+                #[cfg(target_os = "horizon")]
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.set_switch_display_preference(
+                        self.settings.max_fps,
+                        self.settings.horizon.battery,
+                        self.settings.file.bool("switchVrr"),
+                    );
+                }
                 // The GPU holds the atlas now: keep its copy compressed until the world
                 // renderer reads it at the handoff, as the game does after its first frame.
                 if let Some(gui) = &mut self.gui {

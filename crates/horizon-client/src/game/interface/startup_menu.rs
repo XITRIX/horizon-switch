@@ -503,9 +503,10 @@ impl Loading {
             renderer.gamma = self.settings.gamma;
             renderer.set_present_mode(self.settings.vsync, self.settings.horizon.present_mode);
             #[cfg(target_os = "horizon")]
-            renderer.set_switch_refresh_limit(
+            renderer.set_switch_display_preference(
                 self.settings.max_fps,
                 self.settings.horizon.battery,
+                self.settings.file.bool("switchVrr"),
             );
         }
 
