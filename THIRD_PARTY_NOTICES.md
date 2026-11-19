@@ -148,6 +148,14 @@ bundles (Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen), both under
 change: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
 x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264).
 
+## getrandom for Nintendo Switch
+
+The crates in `switch/patches/getrandom-*` are from the
+[getrandom project](https://github.com/rust-random/getrandom), under MIT or
+Apache-2.0. The Switch builds use the SDK random service through their
+newlib-compatible `getrandom` and errno functions. Each vendored release
+keeps its license files.
+
 ## Pixelify Sans
 
 `crates/horizon-theme/fonts/PixelifySans-*.ttf` is [Pixelify Sans](https://github.com/eifetx/Pixelify-Sans)

@@ -353,6 +353,12 @@ pub fn saved_slot(equipment_slot: usize) -> Option<u8> {
 }
 /// `LevelStorageAccess.estimateDiskSpace`: the usable bytes of the disk holding `dir`
 /// (`FileStore.getUsableSpace`), `u64::MAX` when it cannot be asked.
+#[cfg(target_os = "horizon")]
+pub fn estimate_disk_space(_: &Path) -> u64 {
+    horizon_nx::memory::sd_space().map_or(u64::MAX, |(_, free)| free)
+}
+
+#[cfg(not(target_os = "horizon"))]
 pub fn estimate_disk_space(dir: &Path) -> u64 {
     fs4::available_space(dir).unwrap_or(u64::MAX)
 }

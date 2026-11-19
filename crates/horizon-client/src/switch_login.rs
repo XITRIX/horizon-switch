@@ -1,6 +1,6 @@
 //! The Switch profile picker, shown before the game takes the default window.
 #[allow(dead_code)] // The desktop launcher also uses this module for account refresh.
-#[path = "../microsoft_account.rs"]
+#[path = "microsoft_account.rs"]
 mod account;
 
 use horizon_client::auth::{self, AuthSession};

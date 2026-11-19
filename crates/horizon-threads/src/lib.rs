@@ -589,8 +589,10 @@ pub fn catch_stop_signals() {}
 /// On Linux it samples allocations while a capture runs (`heap_sample`).
 #[cfg(all(target_os = "linux", not(feature = "test-allocation-count")))]
 pub type Allocator = heap_sample::SamplingAllocator;
-#[cfg(all(not(target_os = "linux"), not(feature = "test-allocation-count")))]
+#[cfg(all(not(any(target_os = "linux", target_os = "horizon")), not(feature = "test-allocation-count")))]
 pub type Allocator = mimalloc::MiMalloc;
+#[cfg(all(target_os = "horizon", not(feature = "test-allocation-count")))]
+pub use horizon_nx::alloc::Allocator;
 /// The game's mimalloc allocator.
 #[cfg(not(feature = "test-allocation-count"))]
 pub const ALLOCATOR: Allocator = Allocator {};
@@ -624,6 +626,7 @@ pub fn heap_tag(name: &'static str) -> Option<heap_census::Tag> {
 
 /// `mi_option_purge_delay` in mimalloc.h (index 15 in v2 and v3); the bindings
 /// don't name it.
+#[cfg(not(target_os = "horizon"))]
 const PURGE_DELAY: libmimalloc_sys::mi_option_t = 15;
 /// `mi_option_allow_thp` in mimalloc.h (index 43 in v3); unnamed in the bindings too.
 #[cfg(target_os = "linux")]
@@ -640,6 +643,7 @@ const ALLOW_THP: libmimalloc_sys::mi_option_t = 43;
 /// 64 KiB mimalloc page in it is used: in a world at render distance 12 the
 /// game held 200 MiB more that way, at the same load time and frame rate.
 pub fn configure_allocator() {
+    #[cfg(not(target_os = "horizon"))]
     // SAFETY: sets one integer option, which mimalloc reads at each purge.
     unsafe {
         libmimalloc_sys::mi_option_set(PURGE_DELAY, 0);
@@ -656,6 +660,12 @@ pub fn configure_allocator() {
 
 /// The bytes the allocator has committed now and at its peak (mimalloc's
 /// process info), for `horizon-ctl memory`.
+#[cfg(target_os = "horizon")]
+pub fn allocator_commit() -> (usize, usize) {
+    (horizon_nx::memory::usage().1 as usize, 0)
+}
+
+#[cfg(not(target_os = "horizon"))]
 pub fn allocator_commit() -> (usize, usize) {
     let mut info = [0usize; 8];
     let [
@@ -689,6 +699,7 @@ pub fn allocator_commit() -> (usize, usize) {
 /// native libraries still use: glibc keeps freed pages in the arena of the
 /// thread that allocated them, and macOS in its zones until memory runs short.
 pub fn release_free_memory() {
+    #[cfg(not(target_os = "horizon"))]
     // SAFETY: frees only pages no allocation uses (this thread's heap, shared arenas).
     unsafe {
         libmimalloc_sys::mi_collect(true);

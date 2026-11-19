@@ -492,6 +492,7 @@ fn settings_directory<T>(result: std::io::Result<T>) -> Result<T, SnapshotError>
 
 // Reject the whole package beyond the enumeration budget: retaining an arbitrary
 // prefix would make the result depend on filesystem enumeration order again.
+#[cfg(any(windows, all(unix, not(target_os = "horizon"))))]
 fn sorted_names(
     names: impl Iterator<Item = std::io::Result<OsString>>,
 ) -> Result<Vec<OsString>, SnapshotError> {
@@ -526,7 +527,7 @@ fn sorted_names(
     Ok(result)
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "horizon")))]
 fn snapshot_files(
     root: &Path,
     mod_id: &str,
@@ -534,7 +535,7 @@ fn snapshot_files(
     snapshot_files_with_hook(root, mod_id, |_| {})
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "horizon")))]
 fn snapshot_files_with_hook(
     root: &Path,
     mod_id: &str,
@@ -624,7 +625,7 @@ fn snapshot_files(
     }))
 }
 
-#[cfg(not(any(unix, windows)))]
+#[cfg(any(target_os = "horizon", not(any(unix, windows))))]
 fn snapshot_files(
     root: &Path,
     mod_id: &str,
@@ -719,7 +720,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "horizon")))]
     fn unsafe_unreadable_and_non_utf8_entries_keep_their_names() {
         use std::os::unix::ffi::OsStringExt;
         let root = root("named-refusals");
@@ -876,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "horizon")))]
     fn reviewer_capture_follows_external_symlink() {
         let root = root("symlinks");
         let data = root.join("data");
@@ -902,7 +903,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "horizon")))]
     fn fifo_and_directory_do_not_block_or_become_settings() {
         let root = root("fifo");
         assert!(
@@ -953,7 +954,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "horizon")))]
     fn validates_open_handle_after_entry_replacement() {
         use std::io::Read;
         let root = root("replaced");
@@ -1050,7 +1051,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "horizon")))]
     fn reviewer_symlink_replacement_keeps_opened_value() {
         use std::io::Read;
         let root = root("symlink-replaced");

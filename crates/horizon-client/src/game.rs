@@ -60,7 +60,8 @@ fn pack_files(world_tables: &Option<WorldTables>) -> horizon_world::loot::PackOv
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
-/// Installs the dispatcher of each injection point a mod listens at as its function's entry,
+
+// Installs the dispatcher of each injection point a mod listens at as its function's entry,
 /// once the points are sealed. The prebuilt game's staging pass writes the call; a build without
 /// points has none to arm.
 macro_rules! arm_points {
@@ -11071,6 +11072,7 @@ fn hwnd(window: &Window) -> Option<isize> {
 }
 
 #[cfg(target_os = "horizon")]
+#[path = "switch_login.rs"]
 mod switch_login;
 
 pub use launch_api::{UsageError, exit_code};
@@ -11133,6 +11135,9 @@ pub(crate) fn run_with(
     }
     let vanilla_root = options.resources.clone();
     // Saves from before 1.13 upgrade with vanilla's tables, prepared from the player's jar.
+    #[cfg(target_os = "horizon")]
+    horizon_world::datafix::set_resources(&vanilla_root);
+    #[cfg(not(target_os = "horizon"))]
     horizon_world::datafix::set_resources(
         &std::path::absolute(&vanilla_root).unwrap_or_else(|_| vanilla_root.clone()),
     );

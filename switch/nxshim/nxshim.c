@@ -393,3 +393,9 @@ Result nxshim_set_display_size(u32 width, u32 height) {
     return nwindowSetDimensions(window, width, height);
 #endif
 }
+
+bool nxshim_sd_space(int64_t *total, int64_t *free) {
+    FsFileSystem *sd = fsdevGetDeviceFileSystem("sdmc");
+    return sd && R_SUCCEEDED(fsFsGetTotalSpace(sd, "/", total))
+              && R_SUCCEEDED(fsFsGetFreeSpace(sd, "/", free));
+}

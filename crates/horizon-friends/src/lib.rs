@@ -115,6 +115,7 @@ pub fn resolve_relay(url: &str) -> io::Result<Vec<SocketAddr>> {
 
 /// Configure TCP keepalive probes so dead peers (e.g. lost Wi-Fi, sleep, or silent NAT
 /// teardown) are detected by the OS instead of holding threads indefinitely.
+#[cfg(not(target_os = "horizon"))]
 pub fn set_tcp_keepalive(stream: &TcpStream) -> io::Result<()> {
     let sock = socket2::SockRef::from(stream);
     let keepalive = socket2::TcpKeepalive::new()
@@ -123,6 +124,11 @@ pub fn set_tcp_keepalive(stream: &TcpStream) -> io::Result<()> {
     #[cfg(not(any(target_os = "windows", target_os = "openbsd")))]
     let keepalive = keepalive.with_retries(3);
     sock.set_tcp_keepalive(&keepalive)
+}
+
+#[cfg(target_os = "horizon")]
+pub fn set_tcp_keepalive(_: &TcpStream) -> io::Result<()> {
+    Err(io::ErrorKind::Unsupported.into())
 }
 
 /// Carry one connection both ways between a plain stream (the game's) and a

@@ -12,3 +12,15 @@ pub fn usage() -> (u64, u64) {
     unsafe { nxshim_memory(&mut total, &mut used) };
     (total, used)
 }
+
+unsafe extern "C" {
+    fn nxshim_sd_space(total: *mut i64, free: *mut i64) -> bool;
+}
+
+/// Total and free bytes on the SD card.
+pub fn sd_space() -> Option<(u64, u64)> {
+    let (mut total, mut free) = (0, 0);
+    // SAFETY: both output pointers are writable for the duration of the call.
+    (unsafe { nxshim_sd_space(&mut total, &mut free) })
+        .then(|| Some((total.try_into().ok()?, free.try_into().ok()?)))?
+}

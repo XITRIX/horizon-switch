@@ -9,9 +9,13 @@ use super::WorldCounts;
 /// The disk the game runs from, where its worlds are saved: used and total MiB.
 pub(super) fn disk_mb() -> Option<(u64, u64)> {
     const MIB: u64 = 1 << 20;
-    let dir = std::env::current_dir().ok()?;
-    let total = fs4::total_space(&dir).ok()?;
-    let free = fs4::available_space(&dir).ok()?;
+    #[cfg(target_os = "horizon")]
+    let (total, free) = horizon_nx::memory::sd_space()?;
+    #[cfg(not(target_os = "horizon"))]
+    let (total, free) = {
+        let dir = std::env::current_dir().ok()?;
+        (fs4::total_space(&dir).ok()?, fs4::available_space(&dir).ok()?)
+    };
     Some((total.saturating_sub(free) / MIB, total / MIB))
 }
 

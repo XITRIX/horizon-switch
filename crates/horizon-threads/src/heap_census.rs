@@ -183,8 +183,10 @@ pub fn census() -> Vec<(&'static str, isize)> {
     by_name
 }
 
-#[cfg(not(miri))]
+#[cfg(not(any(miri, target_os = "horizon")))]
 use mimalloc::MiMalloc as BackingAlloc;
+#[cfg(all(not(miri), target_os = "horizon"))]
+use horizon_nx::alloc::Allocator as BackingAlloc;
 #[cfg(miri)]
 use std::alloc::System as BackingAlloc;
 

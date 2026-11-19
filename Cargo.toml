@@ -115,6 +115,7 @@ wgpu-hal = { path = "third_party/wgpu-hal" }
 libc = { path = "switch/patches/libc-0.2.191" }
 getrandom02 = { package = "getrandom", path = "switch/patches/getrandom-0.2.17" }
 getrandom = { path = "switch/patches/getrandom-0.3.4" }
+getrandom04 = { package = "getrandom", path = "switch/patches/getrandom-0.4.3" }
 winit = { path = "switch/patches/winit-0.30.13" }
 ring = { path = "switch/patches/ring-0.17.14" }
 wgpu = { path = "switch/patches/wgpu-30.0.1" }

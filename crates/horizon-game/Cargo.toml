@@ -11,7 +11,6 @@ horizon-guest-stack = { path = "../horizon-guest-stack" }
 horizon-client = { path = "../horizon-client", default-features = false }
 horizon-mod-package = { path = "../horizon-mod-package", default-features = false, features = ["index"] }
 
-horizon-mod-host = { path = "../horizon-mod-host", default-features = false }
 
 [lints]
 workspace = true
@@ -48,3 +47,8 @@ serde_json = "1"
 
 [target.'cfg(target_os = "horizon")'.dependencies]
 horizon-nx = { path = "../horizon-nx" }
+horizon-engine-slots = { path = "../horizon-engine-slots" }
+mod-api = { package = "horizon-mod-api", path = "../horizon-mod-api" }
+
+[target.'cfg(not(target_os = "horizon"))'.dependencies]
+horizon-mod-host = { path = "../horizon-mod-host", default-features = false }

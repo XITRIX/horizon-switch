@@ -1,3 +1,4 @@
+// game-module-cfg: not(target_os = "horizon")
 //! One checked implementation for config, game bulk data and world bulk data.
 use super::Game;
 use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};

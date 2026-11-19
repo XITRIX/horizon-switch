@@ -1537,8 +1537,6 @@ dependencies = [
 [[package]]
 name = "getrandom"
 version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
 dependencies = [
  "cfg-if",
  "js-sys",
@@ -1966,6 +1964,7 @@ dependencies = [
  "horizon-mod-vocab",
  "horizon-mod-wasm",
  "horizon-narrator",
+ "horizon-nx",
  "horizon-optifine",
  "horizon-perf",
  "horizon-perf-format",
@@ -2150,7 +2149,9 @@ version = "0.1.0"
 dependencies = [
  "horizon-client",
  "horizon-core",
+ "horizon-engine-slots",
  "horizon-guest-stack",
+ "horizon-mod-api",
  "horizon-mod-host",
  "horizon-mod-package",
  "horizon-nx",
@@ -2862,6 +2863,7 @@ dependencies = [
  "addr2line",
  "framehop",
  "horizon-guest-stack",
+ "horizon-nx",
  "libc",
  "libmimalloc-sys",
  "memmap2",
@@ -6015,6 +6017,8 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "socks",
  "url",
  "webpki-roots 0.26.11",

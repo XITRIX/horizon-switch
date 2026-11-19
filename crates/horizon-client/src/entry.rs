@@ -10,6 +10,7 @@ pub(crate) mod runtime_environment;
 pub struct Startup {
     launch: LaunchArguments,
     options: game::Options,
+    #[cfg(not(target_os = "horizon"))]
     _capture: Option<horizon_mod_package::output::Capture>,
 }
 
@@ -24,6 +25,7 @@ impl Startup {
 /// and resource marker metadata only: no logging, account loading, mods or worker threads.
 /// Account IO, cwd changes and command registration remain in Options::read, after leases.
 pub fn prepare() -> Startup {
+    #[cfg(not(target_os = "horizon"))]
     horizon_mod_package::holder::enter();
     let result: crate::Result<_> = (|| {
         #[cfg(target_os = "horizon")]
@@ -31,12 +33,12 @@ pub fn prepare() -> Startup {
             let home = std::path::Path::new(logging::SWITCH_HOME);
             std::fs::create_dir_all(home)?;
             std::env::set_current_dir(home)?;
-            LaunchArguments::parse(std::env::args().skip(1), home, home, None)?
+            LaunchArguments::parse(std::env::args().skip(1), home, std::path::Path::new(""), None)?
         };
         #[cfg(not(target_os = "horizon"))]
         let launch = {
-        let mut command = std::process::Command::new(std::env::current_exe()?);
-        command.args(std::env::args_os().skip(1));
+            let mut command = std::process::Command::new(std::env::current_exe()?);
+            command.args(std::env::args_os().skip(1));
             LaunchArguments::for_command(&command)?
         };
         let options = game::Options::validate(launch.clone())?;
@@ -49,10 +51,12 @@ pub fn prepare() -> Startup {
     let Some(options) = options else {
         std::process::exit(0);
     };
+    #[cfg(not(target_os = "horizon"))]
     let capture = horizon_mod_package::holder::acquire(&launch);
     Startup {
         launch,
         options,
+        #[cfg(not(target_os = "horizon"))]
         _capture: capture,
     }
 }
@@ -112,6 +116,7 @@ pub fn start<G>(
     let Startup {
         launch,
         options,
+        #[cfg(not(target_os = "horizon"))]
         _capture,
     } = startup;
     runtime_environment::capture(&launch);

@@ -98,7 +98,7 @@ pub fn child_entry() -> ChildEntry {
 /// Caps the child's address space (enforced on Linux) and processor time (Unix), so it ends
 /// even when its parent is gone. A limit the system refuses leaves the wait in the parent.
 fn limit() {
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "horizon")))]
     {
         let memory = libc::rlimit {
             rlim_cur: CHILD_MEMORY as libc::rlim_t,

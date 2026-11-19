@@ -9,7 +9,10 @@
 //! way: the pipe tells the thread when bytes arrive.
 use super::Body;
 use horizon_protocol::connection::{ConnReader, ConnWriter, Pipe, Socket};
+#[cfg(not(target_os = "horizon"))]
 use mio::{Events, Interest, Poll, Registry, Token, Waker};
+#[cfg(target_os = "horizon")]
+type Registry = ();
 use std::{
     io::{ErrorKind, Read, Write},
     sync::{
@@ -31,6 +34,7 @@ const SWEEP: Duration = Duration::from_millis(100);
 const AHEAD: usize = 256 << 10;
 /// How long a disconnect's last bytes are given before the socket closes.
 const LINGER: Duration = Duration::from_millis(50);
+#[cfg(not(target_os = "horizon"))]
 const WAKER: Token = Token(usize::MAX);
 
 /// The play state's side of a connection (conn.rs's `PlayConn`).
@@ -287,7 +291,10 @@ struct Inbox {
 
 /// One network thread, as the others see it.
 pub(super) struct Worker {
+    #[cfg(not(target_os = "horizon"))]
     waker: Waker,
+    #[cfg(target_os = "horizon")]
+    thread: OnceLock<std::thread::Thread>,
     inbox: Mutex<Inbox>,
     /// Its connections, to give a new one to the least busy.
     load: AtomicUsize,
@@ -301,6 +308,11 @@ impl Worker {
         empty
     }
     pub(super) fn wake(&self) {
+        #[cfg(target_os = "horizon")]
+        if let Some(thread) = self.thread.get() {
+            thread.unpark();
+        }
+        #[cfg(not(target_os = "horizon"))]
         if let Err(e) = self.waker.wake() {
             log::warn!("[lan] waking a network thread: {e}");
         }
@@ -323,15 +335,25 @@ fn pool() -> Result<&'static Pool, String> {
 fn start(threads: usize) -> std::io::Result<Pool> {
     let mut workers = Vec::new();
     for n in 0..threads {
+        #[cfg(not(target_os = "horizon"))]
         let poll = Poll::new()?;
         let worker = Arc::new(Worker {
+            #[cfg(not(target_os = "horizon"))]
             waker: Waker::new(poll.registry(), WAKER)?,
+            #[cfg(target_os = "horizon")]
+            thread: OnceLock::new(),
             inbox: Mutex::default(),
             load: AtomicUsize::new(0),
         });
         let mine = worker.clone();
         // Payload handlers of wasm mods run on these threads (the server's network root).
+        #[cfg(not(target_os = "horizon"))]
         horizon_guest_stack::spawn(format!("horizon-net-{n}"), move || run(poll, &mine))?;
+        #[cfg(target_os = "horizon")]
+        std::thread::Builder::new().name(format!("horizon-net-{n}")).spawn(move || {
+            let _ = mine.thread.set(std::thread::current());
+            run((), &mine);
+        })?;
         workers.push(worker);
     }
     Ok(Pool { workers })
@@ -371,7 +393,12 @@ pub(super) fn adopt(
     }
 }
 
-fn run(mut poll: Poll, worker: &Arc<Worker>) {
+fn run(
+    #[cfg(not(target_os = "horizon"))] mut poll: Poll,
+    #[cfg(target_os = "horizon")] _: (),
+    worker: &Arc<Worker>,
+) {
+    #[cfg(not(target_os = "horizon"))]
     let mut events = Events::with_capacity(1024);
     let mut conns: Vec<Option<Conn>> = Vec::new();
     let mut free: Vec<usize> = Vec::new();
@@ -379,13 +406,27 @@ fn run(mut poll: Poll, worker: &Arc<Worker>) {
     let mut sweep_at = Instant::now() + SWEEP;
     loop {
         let wait = sweep_at.saturating_duration_since(Instant::now());
+        #[cfg(not(target_os = "horizon"))]
         if let Err(e) = poll.poll(&mut events, Some(wait))
             && e.kind() != ErrorKind::Interrupted
         {
             log::warn!("[lan] network poll: {e}");
             std::thread::sleep(SWEEP);
         }
+        #[cfg(target_os = "horizon")]
+        {
+            // TCP uses nonblocking reads. Local pipes and queued writes wake the thread
+            // immediately, even when the pool has no network sockets.
+            let tcp = conns.iter().flatten().any(|c| matches!(c.io, Io::Tcp(_)));
+            let wait = if tcp { wait.min(Duration::from_millis(10)) } else { wait };
+            std::thread::park_timeout(wait);
+        }
         let now = Instant::now();
+        #[cfg(not(target_os = "horizon"))]
+        let registry = poll.registry();
+        #[cfg(target_os = "horizon")]
+        let registry = &();
+        #[cfg(not(target_os = "horizon"))]
         for event in &events {
             let i = event.token().0;
             let Some(Some(c)) = conns.get_mut(i) else {
@@ -399,6 +440,15 @@ fn run(mut poll: Poll, worker: &Arc<Worker>) {
             }
             touched.push(i);
         }
+        #[cfg(target_os = "horizon")]
+        for (i, slot) in conns.iter_mut().enumerate() {
+            if let Some(c) = slot
+                && matches!(c.io, Io::Tcp(_))
+            {
+                c.memory_ready(now);
+                touched.push(i);
+            }
+        }
         let inbox =
             std::mem::take(&mut *worker.inbox.lock().unwrap_or_else(PoisonError::into_inner));
         for adopted in inbox.adopt {
@@ -406,7 +456,7 @@ fn run(mut poll: Poll, worker: &Arc<Worker>) {
             if i == conns.len() {
                 conns.push(None);
             }
-            match Conn::register(adopted, poll.registry(), worker, i, now) {
+            match Conn::register(adopted, registry, worker, i, now) {
                 Ok(mut c) => {
                     c.outbox.attach(i);
                     c.read(now);
@@ -442,7 +492,7 @@ fn run(mut poll: Poll, worker: &Arc<Worker>) {
         for i in touched.drain(..) {
             if conns[i].as_ref().is_some_and(|c| c.done(now)) {
                 let c = conns[i].take().expect("checked");
-                c.close(poll.registry(), worker);
+                c.close(registry, worker);
                 free.push(i);
             }
         }
@@ -451,7 +501,10 @@ fn run(mut poll: Poll, worker: &Arc<Worker>) {
 
 /// A connection's stream, polled.
 enum Io {
+    #[cfg(not(target_os = "horizon"))]
     Tcp(mio::net::TcpStream),
+    #[cfg(target_os = "horizon")]
+    Tcp(std::net::TcpStream),
     Memory(Pipe),
 }
 impl Read for Io {
@@ -512,19 +565,22 @@ impl Conn {
 
     fn register(
         a: Adopted,
-        registry: &Registry,
+        _registry: &Registry,
         worker: &Arc<Worker>,
         i: usize,
         now: Instant,
     ) -> Result<Self, ()> {
         let io = match a.socket {
             Socket::Tcp(stream) => {
+                #[cfg(not(target_os = "horizon"))]
                 let registered = stream.set_nonblocking(true).and_then(|()| {
                     let mut stream = mio::net::TcpStream::from_std(stream);
                     let interest = Interest::READABLE | Interest::WRITABLE;
-                    registry.register(&mut stream, Token(i), interest)?;
+                    _registry.register(&mut stream, Token(i), interest)?;
                     Ok(stream)
                 });
+                #[cfg(target_os = "horizon")]
+                let registered = stream.set_nonblocking(true).map(|()| stream);
                 match registered {
                     Ok(stream) => Io::Tcp(stream),
                     Err(e) => {
@@ -780,10 +836,11 @@ impl Conn {
         }
     }
 
-    fn close(mut self, registry: &Registry, worker: &Worker) {
+    fn close(mut self, _registry: &Registry, worker: &Worker) {
         match &mut self.io {
             Io::Tcp(stream) => {
-                let _ = registry.deregister(stream);
+                #[cfg(not(target_os = "horizon"))]
+                let _ = _registry.deregister(stream);
                 let _ = stream.shutdown(std::net::Shutdown::Both);
             }
             Io::Memory(pipe) => {

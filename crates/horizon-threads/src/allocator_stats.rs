@@ -1,6 +1,7 @@
 //! The heap the program has in use in mimalloc, from its statistics.
 
 /// The number after `"key":` on a line of mimalloc's JSON.
+#[cfg(not(target_os = "horizon"))]
 fn field(line: &str, key: &str) -> Option<usize> {
     let from = line.find(&format!("\"{key}\":"))? + key.len() + 3;
     let digits: String = line[from..]
@@ -12,6 +13,7 @@ fn field(line: &str, key: &str) -> Option<usize> {
 }
 
 /// Bytes of the pages `malloc_bins` has in use, plus the huge blocks `malloc_huge` counts by size.
+#[cfg(not(target_os = "horizon"))]
 fn in_use(json: &str) -> Option<usize> {
     let huge = json.lines().find(|l| l.contains("\"malloc_huge\":"))?;
     let bins = json.split("\"malloc_bins\"").nth(1)?;
@@ -23,6 +25,7 @@ fn in_use(json: &str) -> Option<usize> {
     Some(total)
 }
 
+#[cfg(not(target_os = "horizon"))]
 fn stats_json() -> Option<String> {
     // SAFETY: a null buffer asks mimalloc for one of its own, freed below with its `mi_free`.
     let raw = unsafe { libmimalloc_sys::mi_stats_get_json(0, std::ptr::null_mut()) };
@@ -39,11 +42,17 @@ fn stats_json() -> Option<String> {
 }
 
 /// The bytes of the pages holding allocations now: the heap in use, counting each page whole.
+#[cfg(not(target_os = "horizon"))]
 pub fn live_bytes() -> Option<usize> {
     in_use(&stats_json()?)
 }
 
-#[cfg(test)]
+#[cfg(target_os = "horizon")]
+pub fn live_bytes() -> Option<usize> {
+    None
+}
+
+#[cfg(all(test, not(target_os = "horizon")))]
 mod tests {
     use super::*;
 

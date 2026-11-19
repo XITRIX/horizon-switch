@@ -8,8 +8,12 @@ description = "Scheduling hints for the game's threads and its allocator, and th
 
 [dependencies]
 horizon-guest-stack = { path = "../horizon-guest-stack" }
+[target.'cfg(not(target_os = "horizon"))'.dependencies]
 mimalloc = { version = "0.1.52", default-features = false }
 libmimalloc-sys = { version = "0.1.49", default-features = false, features = ["extended"] }
+
+[target.'cfg(target_os = "horizon")'.dependencies]
+horizon-nx = { path = "../horizon-nx" }
 
 [target.'cfg(any(target_vendor = "apple", target_os = "linux", target_os = "android"))'.dependencies]
 libc = "0.2"
