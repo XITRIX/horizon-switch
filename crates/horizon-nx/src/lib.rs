@@ -12,7 +12,17 @@ pub mod romfs;
 unsafe extern "C" {
     fn nxshim_exit_successfully() -> !;
     fn nxshim_net_init() -> u32;
+    fn nxshim_set_high_refresh(enabled: bool) -> u32;
     fn nxshim_local_ipv4(address: *mut u32) -> u32;
+}
+
+/// Requests the high-refresh display mode where supported by the Switch SDK.
+pub fn set_high_refresh(enabled: bool) -> Result<(), u32> {
+    // SAFETY: applies a display preference on the thread that owns the game window.
+    match unsafe { nxshim_set_high_refresh(enabled) } {
+        0 => Ok(()),
+        result => Err(result),
+    }
 }
 
 /// Starts BSD sockets and DNS, returning the SDK result code on failure.

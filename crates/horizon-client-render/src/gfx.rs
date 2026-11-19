@@ -1799,6 +1799,10 @@ pub struct Renderer {
     readback: readback::Readback,
     pub info: wgpu::AdapterInfo,
     pub suspended: bool,
+    #[cfg(target_os = "horizon")]
+    switch_high_refresh: Option<bool>,
+    #[cfg(target_os = "horizon")]
+    switch_refresh_hz: Option<i32>,
     /// Consecutive frames whose surface acquisition failed validation. The
     /// first gets the swapchain a fresh configuration; later ones reattach
     /// the window, as a lost surface does.
@@ -4579,6 +4583,10 @@ impl Renderer {
             readback: readback::Readback::default(),
             info,
             suspended: !drawable_size(size.width, size.height, max_side),
+            #[cfg(target_os = "horizon")]
+            switch_high_refresh: None,
+            #[cfg(target_os = "horizon")]
+            switch_refresh_hz: None,
             acquire_validation_failures: 0,
             surface_unconfigured: false,
             drawn_sections: 0,
@@ -4860,14 +4868,39 @@ impl Renderer {
         }
     }
     #[cfg(target_os = "horizon")]
-    pub fn display_paces_frames(&self, limit: i32) -> bool {
-        self.surface.is_some()
-            && self.config.present_mode == wgpu::PresentMode::Fifo
-            && limit >= self
-                .window
-                .current_monitor()
-                .and_then(|monitor| monitor.refresh_rate_millihertz())
-                .map_or(60, |mhz| mhz.div_ceil(1000) as i32)
+    pub fn set_switch_refresh_limit(&mut self, limit: u32, battery: bool) {
+        let high_refresh = limit > 60 && !battery;
+        if self.surface.is_none() || self.switch_high_refresh == Some(high_refresh) {
+            return;
+        }
+        self.switch_high_refresh = Some(high_refresh);
+        self.switch_refresh_hz = None;
+        if let Err(code) = horizon_nx::set_high_refresh(high_refresh) {
+            log::warn!("Horizon: the Switch display rate request failed (0x{code:08x})");
+        }
+    }
+    #[cfg(target_os = "horizon")]
+    pub fn display_paces_frames(&mut self, limit: i32) -> bool {
+        if self.surface.is_none() {
+            return false;
+        }
+        let refresh_hz = self
+            .window
+            .current_monitor()
+            .and_then(|monitor| monitor.refresh_rate_millihertz())
+            .map_or(60, |mhz| mhz.div_ceil(1000) as i32);
+        let presentation_fps = if self.switch_high_refresh == Some(true) {
+            refresh_hz
+        } else {
+            refresh_hz.min(60)
+        };
+        if self.switch_refresh_hz != Some(refresh_hz) {
+            self.switch_refresh_hz = Some(refresh_hz);
+            log::info!(
+                "Horizon: Switch display is running at {refresh_hz} Hz, up to {presentation_fps} presented FPS"
+            );
+        }
+        self.config.present_mode == wgpu::PresentMode::Fifo && limit >= presentation_fps
     }
     #[cfg(target_os = "horizon")]
     pub fn set_switch_resolution(&mut self, [width, height]: [u32; 2]) -> Result<bool> {

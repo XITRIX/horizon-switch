@@ -394,6 +394,54 @@ Result nxshim_set_display_size(u32 width, u32 height) {
 #endif
 }
 
+#ifdef __SWITCH2__
+static Mutex nx_display_rate_lock;
+static bool nx_display_rate_configured;
+static u64 nx_display_rate_checked_at;
+static u32 nx_display_refresh_hz = 60;
+#endif
+
+Result nxshim_set_high_refresh(bool enabled) {
+#ifdef __SWITCH2__
+    mutexLock(&nx_display_rate_lock);
+    Result result = nwindowSetFrameRates(nwindowGetDefault(), enabled ? 120 : 60, 60, true);
+    if (R_SUCCEEDED(result)) {
+        nx_display_rate_configured = true;
+        nx_display_rate_checked_at = 0;
+    }
+    mutexUnlock(&nx_display_rate_lock);
+    return result;
+#else
+    (void)enabled;
+    return 0;
+#endif
+}
+
+u32 nxshim_display_refresh_millihertz(void) {
+#ifdef __SWITCH2__
+    mutexLock(&nx_display_rate_lock);
+    const u64 now = armGetSystemTick();
+    // Keep VI2 queries out of the frame loop. The mode can change after
+    // presentation or when the console is docked or undocked.
+    if (nx_display_rate_configured && (!nx_display_rate_checked_at ||
+            armTicksToNs(now - nx_display_rate_checked_at) >= UINT64_C(1000000000))) {
+        nx_display_rate_checked_at = now;
+        Vi2Display *display;
+        u32 hz;
+        bool vrr;
+        if (R_SUCCEEDED(nwindowGetVi2Display(nwindowGetDefault(), &display)) &&
+                R_SUCCEEDED(vi2QueryDisplayRefreshRate(display, &hz, &vrr))) {
+            nx_display_refresh_hz = hz;
+        }
+    }
+    const u32 millihertz = nx_display_refresh_hz * 1000;
+    mutexUnlock(&nx_display_rate_lock);
+    return millihertz;
+#else
+    return 60000;
+#endif
+}
+
 bool nxshim_sd_space(int64_t *total, int64_t *free) {
     FsFileSystem *sd = fsdevGetDeviceFileSystem("sdmc");
     return sd && R_SUCCEEDED(fsFsGetTotalSpace(sd, "/", total))

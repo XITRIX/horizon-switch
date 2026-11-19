@@ -52,6 +52,7 @@ pub(crate) mod ffi {
         pub fn nwindowGetDefault() -> *mut c_void;
         pub fn nwindowSetDimensions(window: *mut c_void, width: u32, height: u32) -> u32;
         pub fn nxshim_set_display_size(width: u32, height: u32) -> u32;
+        pub fn nxshim_display_refresh_millihertz() -> u32;
         pub fn appletMainLoop() -> bool;
         pub fn appletGetFocusState() -> u8;
         pub fn appletGetOperationMode() -> u8;
@@ -134,7 +135,8 @@ impl MonitorHandle {
     }
 
     pub fn refresh_rate_millihertz(&self) -> Option<u32> {
-        Some(60000)
+        // SAFETY: the shim reads the display's cached rate or refreshes it through VI2.
+        Some(unsafe { ffi::nxshim_display_refresh_millihertz() })
     }
 
     pub fn video_modes(&self) -> impl Iterator<Item = VideoModeHandle> {
@@ -157,7 +159,7 @@ impl VideoModeHandle {
     }
 
     pub fn refresh_rate_millihertz(&self) -> u32 {
-        60000
+        self.monitor.refresh_rate_millihertz().unwrap_or(60_000)
     }
 
     pub fn monitor(&self) -> MonitorHandle {

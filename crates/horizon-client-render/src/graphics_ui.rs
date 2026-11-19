@@ -171,7 +171,15 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
     } else {
         "Reduced draws far terrain coarser, for GPUs it slows down."
     };
-    let max_fps = v(Opt::MaxFps, None, "Caps frames per second to save power and heat.");
+    let max_fps = v(
+        Opt::MaxFps,
+        None,
+        if cfg!(target_os = "horizon") {
+            "Caps rendering. A cap above 60 also requests 120 Hz on Switch 2."
+        } else {
+            "Caps frames per second to save power and heat."
+        },
+    );
     let display = (
         "Display",
         vec![

@@ -633,6 +633,8 @@ impl Game<'_> {
             r.gamma = s.gamma;
             r.improved_transparency = s.improved_transparency;
             r.set_present_mode(s.vsync, s.horizon.present_mode);
+            #[cfg(target_os = "horizon")]
+            r.set_switch_refresh_limit(s.max_fps, s.horizon.battery);
             r.animated_textures = s.horizon.animated_textures;
             r.screenshot_quality = s.horizon.screenshot_quality;
             r.set_mipmap_levels(s.mipmap_levels.max(0) as u32);
@@ -842,7 +844,7 @@ impl Game<'_> {
         }
         let limit = self.framerate_limit();
         #[cfg(target_os = "horizon")]
-        if self.renderer.as_ref().is_some_and(|renderer| renderer.display_paces_frames(limit)) {
+        if self.renderer.as_mut().is_some_and(|renderer| renderer.display_paces_frames(limit)) {
             return;
         }
         match self.settings.horizon.pacing {

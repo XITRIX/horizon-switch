@@ -502,6 +502,11 @@ impl Loading {
         if let Some(renderer) = &mut self.renderer {
             renderer.gamma = self.settings.gamma;
             renderer.set_present_mode(self.settings.vsync, self.settings.horizon.present_mode);
+            #[cfg(target_os = "horizon")]
+            renderer.set_switch_refresh_limit(
+                self.settings.max_fps,
+                self.settings.horizon.battery,
+            );
         }
 
         super::narrator::sync(&self.settings);
