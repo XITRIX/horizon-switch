@@ -420,6 +420,8 @@ impl Loading {
         game.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
+        #[cfg(target_os = "horizon")]
+        game.apply_switch_resolution()?;
         game.previous = Instant::now();
         // Minecraft.onGameLoadFinished: a start that made it this far is clean.
         game.settings.file.set(

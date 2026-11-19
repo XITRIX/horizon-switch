@@ -200,14 +200,19 @@ impl LimiterClock for SystemClock {
         i64::try_from(self.origin.elapsed().as_nanos()).unwrap_or(i64::MAX)
     }
     fn park(&mut self, nanos: i64) {
-        let end = self.nanos().saturating_add(nanos);
-        park_in_steps(
-            end,
-            || self.nanos(),
-            |step| {
-                std::thread::sleep(std::time::Duration::from_nanos(step as u64));
-            },
-        );
+        #[cfg(target_os = "horizon")]
+        std::thread::sleep(std::time::Duration::from_nanos(nanos.max(0) as u64));
+        #[cfg(not(target_os = "horizon"))]
+        {
+            let end = self.nanos().saturating_add(nanos);
+            park_in_steps(
+                end,
+                || self.nanos(),
+                |step| {
+                    std::thread::sleep(std::time::Duration::from_nanos(step as u64));
+                },
+            );
+        }
     }
     fn spin(&mut self) {
         std::hint::spin_loop();
@@ -215,6 +220,7 @@ impl LimiterClock for SystemClock {
 }
 
 /// The longest single sleep of [`SystemClock::park`].
+#[cfg(any(test, not(target_os = "horizon")))]
 const PARK_STEP_NS: i64 = 1_000_000;
 
 /// Sleeps until `now()` reaches `end`, at most [`PARK_STEP_NS`] at a time. macOS lets
@@ -222,6 +228,7 @@ const PARK_STEP_NS: i64 = 1_000_000;
 /// sleep, 0.25 ms on 1 ms), more than the limiter's overshoot margin can learn (capped
 /// at 2 ms): a 60 FPS cap gave frames of 17-20 ms. Short steps keep the lateness to
 /// the last step's.
+#[cfg(any(test, not(target_os = "horizon")))]
 fn park_in_steps(end: i64, mut now: impl FnMut() -> i64, mut sleep: impl FnMut(i64)) {
     loop {
         let left = end - now();

@@ -437,6 +437,12 @@ impl ApplicationHandler for Game<'_> {
         self.ime_allowed = false;
         self.ime_area = None;
         self.apply_settings();
+        #[cfg(target_os = "horizon")]
+        if let Err(error) = self.apply_switch_resolution() {
+            self.error = Some(error);
+            event_loop.exit();
+            return;
+        }
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {

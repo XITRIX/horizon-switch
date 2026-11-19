@@ -4851,21 +4851,35 @@ impl Renderer {
         } else {
             self.offscreen = Some(Self::offscreen_target(&self.device, &self.config));
         }
+        self.resize_targets();
+    }
+    fn resize_targets(&mut self) {
         self.depth = Self::depth(&self.device, &self.config);
         if let Some(pipeline) = &mut self.external {
-            pipeline.resize([width, height]);
+            pipeline.resize([self.config.width, self.config.height]);
         }
+    }
+    #[cfg(target_os = "horizon")]
+    pub fn display_paces_frames(&self, limit: i32) -> bool {
+        self.surface.is_some()
+            && self.config.present_mode == wgpu::PresentMode::Fifo
+            && limit >= self
+                .window
+                .current_monitor()
+                .and_then(|monitor| monitor.refresh_rate_millihertz())
+                .map_or(60, |mhz| mhz.div_ceil(1000) as i32)
     }
     #[cfg(target_os = "horizon")]
     pub fn set_switch_resolution(&mut self, [width, height]: [u32; 2]) -> Result<bool> {
         use winit::dpi::PhysicalSize;
 
-        if self.surface.is_none() {
+        let Some(surface) = &self.surface else {
             return Ok(false);
-        }
+        };
         let previous = PhysicalSize::new(self.config.width, self.config.height);
         let wanted = PhysicalSize::new(width, height);
         self.frame_gen.stop_to_configure();
+        self.queue.wait();
         self.device.poll(wgpu::PollType::Wait {
             submission_index: None,
             timeout: Some(std::time::Duration::from_secs(5)),
@@ -4874,17 +4888,26 @@ impl Renderer {
             log::warn!("Horizon: the display did not accept {width}x{height}");
             return Ok(false);
         }
-        self.resize(width, height);
-        if self.surface_unconfigured || self.suspended {
+        let configure = |config| {
+            let config = output_apply::surface_config(config, self.hdr.as_ref().map(|hdr| hdr.output));
+            Self::configure(&self.device, surface, &config, self.hdr.as_ref(), &self.device_lost)
+        };
+        let mut next = self.config.clone();
+        next.width = width;
+        next.height = height;
+        if let Err(error) = configure(&next) {
+            log::warn!("Horizon: could not switch to {width}x{height}: {error}");
             if self.window.request_inner_size(previous) != Some(previous) {
                 return Err("The Switch display could not restore its previous size".into());
             }
-            self.resize(previous.width, previous.height);
-            if self.surface_unconfigured || self.suspended {
-                return Err("The Switch swapchain could not restore its previous size".into());
-            }
+            configure(&self.config)
+                .map_err(|error| format!("Restoring the Switch swapchain failed: {error}"))?;
             return Ok(false);
         }
+        self.config = next;
+        self.surface_unconfigured = false;
+        self.suspended = false;
+        self.resize_targets();
         log::info!("Horizon: Switch framebuffer set to {width}x{height}");
         Ok(true)
     }
@@ -6085,9 +6108,12 @@ impl Renderer {
     ) -> std::result::Result<(), String> {
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
         surface.configure(device, config);
+        let internal = pollster::block_on(internal.pop());
         let memory = pollster::block_on(memory.pop());
-        if let Some(e) = memory.or(pollster::block_on(validation.pop())) {
+        let validation = pollster::block_on(validation.pop());
+        if let Some(e) = internal.or(memory).or(validation) {
             return Err(e.to_string());
         }
         if device_lost.load(std::sync::atomic::Ordering::Relaxed) {

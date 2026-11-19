@@ -171,10 +171,41 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
     } else {
         "Reduced draws far terrain coarser, for GPUs it slows down."
     };
+    let max_fps = v(Opt::MaxFps, None, "Caps frames per second to save power and heat.");
+    let display = (
+        "Display",
+        vec![
+            #[cfg(target_os = "horizon")]
+            v(Opt::SwitchResolution, None, "Changes the output between 720p and 1080p."),
+            #[cfg(target_os = "horizon")]
+            max_fps,
+            v(Opt::GuiScale, None, "Size of menus and the HUD."),
+            #[cfg(not(target_os = "horizon"))]
+            v(Opt::Fullscreen, None, "Fills the screen (borderless)."),
+            #[cfg(not(target_os = "horizon"))]
+            v(
+                Opt::ExclusiveFullscreen,
+                None,
+                "Fullscreen takes the display over, at the mode below.",
+            ),
+            #[cfg(not(target_os = "horizon"))]
+            v(
+                Opt::ExclusiveMode,
+                None,
+                "The display mode exclusive fullscreen uses. Applies when you leave.",
+            ),
+            v(Opt::Vsync, None, "Waits for the display's refresh to avoid tearing."),
+            #[cfg(not(target_os = "horizon"))]
+            max_fps,
+            v(Opt::InactivityFps, None, "Lowers the frame rate when minimised, or idle too."),
+        ],
+    );
     let mut pages = vec![
         (
             Page::General,
             vec![
+                #[cfg(target_os = "horizon")]
+                display,
                 (
                     "Preset",
                     vec![
@@ -222,38 +253,8 @@ pub fn rows() -> Vec<(Page, Vec<(&'static str, Vec<Setting>)>)> {
                         v(Opt::Gamma, None, "Brightens dark places."),
                     ],
                 ),
-                (
-                    "Display",
-                    vec![
-                        v(Opt::GuiScale, None, "Size of menus and the HUD."),
-                        v(Opt::Fullscreen, None, "Fills the screen (borderless)."),
-                        v(
-                            Opt::ExclusiveFullscreen,
-                            None,
-                            "Fullscreen takes the display over, at the mode below.",
-                        ),
-                        v(
-                            Opt::ExclusiveMode,
-                            None,
-                            "The display mode exclusive fullscreen uses. Applies when you leave.",
-                        ),
-                        v(
-                            Opt::Vsync,
-                            None,
-                            "Waits for the display's refresh: no tearing, a little latency.",
-                        ),
-                        v(
-                            Opt::MaxFps,
-                            None,
-                            "Caps frames per second; a cap saves power and heat.",
-                        ),
-                        v(
-                            Opt::InactivityFps,
-                            None,
-                            "Lowers the frame rate when minimised, or idle too.",
-                        ),
-                    ],
-                ),
+                #[cfg(not(target_os = "horizon"))]
+                display,
                 (
                     "Interface",
                     vec![
@@ -1298,6 +1299,15 @@ impl Item {
                     Text::tr("options.chunks", &[&s.render_distance]),
                 )
             }
+            #[cfg(target_os = "horizon")]
+            Item::Vanilla(Opt::MaxFps) => {
+                let value = if s.max_fps >= 260 {
+                    Text::tr("options.framerateLimit.max", &[])
+                } else {
+                    Text::tr("options.framerate", &[&s.max_fps])
+                };
+                Text::option_name_value(Text::literal(lang::get("FPS Limit")), value)
+            }
             Item::Vanilla(o) => o.label(s),
             Item::Horizon(h) => h.label(s, out),
             Item::Extra(e) => Text::option_name_value(
@@ -1331,6 +1341,10 @@ impl Item {
     }
     /// A preset no longer describes the settings once one of them changes.
     fn touched(self, s: &mut Settings) {
+        #[cfg(target_os = "horizon")]
+        if self == Item::Vanilla(Opt::SwitchResolution) {
+            return;
+        }
         let presetless = matches!(
             self,
             Item::Extra(_)
@@ -1430,8 +1444,10 @@ fn row(setting: Setting, s: &Settings, out: &EffectiveOutput) -> Row<Item> {
 }
 
 /// The vanilla rows `options.txt` keeps as it read them, not in `Settings`' own fields.
-const FILE_KEYS: [&str; 4] = [
+const FILE_KEYS: [&str; 4 + cfg!(target_os = "horizon") as usize] = [
     "exclusiveFullscreen",
+    #[cfg(target_os = "horizon")]
+    "switchResolution",
     "textureFiltering",
     "maxAnisotropyBit",
     "fovEffectScale",

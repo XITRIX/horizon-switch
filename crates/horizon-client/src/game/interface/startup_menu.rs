@@ -594,6 +594,15 @@ impl Loading {
                 // No world debug list exists before Game construction.
                 Event::DebugEntriesChanged => {}
                 Event::Changed => {
+                    #[cfg(target_os = "horizon")]
+                    if !self.options.as_ref().is_some_and(|options| options.offscreen)
+                        && let Some(renderer) = &mut self.renderer
+                        && let Err(error) =
+                            super::options::apply_switch_framebuffer(renderer, &mut self.settings)
+                    {
+                        self.error = Some(error);
+                        return;
+                    }
                     self.save_menu_settings();
                     self.settings.keys.sync_action_bindings();
                     self.apply_menu_settings();

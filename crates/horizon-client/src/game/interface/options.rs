@@ -20,6 +20,28 @@ pub(super) const CONTROL_HELP: &[&str] = &[
     "options-set KEY VALUE          set an option (enums by name, keys as key.keyboard.w, lists as JSON), apply and save it",
 ];
 
+#[cfg(target_os = "horizon")]
+pub(super) fn apply_switch_framebuffer(
+    renderer: &mut super::Renderer,
+    settings: &mut super::Settings,
+) -> Result<()> {
+    let size = horizon_client::settings::switch_resolution(&settings.file);
+    if size == [renderer.config.width, renderer.config.height] {
+        return Ok(());
+    }
+    // Keep the last accepted mode on disk until the display accepts the new one.
+    let key = "switchResolution";
+    let save_mode = |settings: &mut super::Settings, height| {
+        settings.file.set(key, horizon_client::options_file::V::Int(i32::from(height == 1080)));
+        settings.save(&Game::options_path());
+    };
+    save_mode(settings, renderer.config.height);
+    if renderer.set_switch_resolution(size)? {
+        save_mode(settings, size[1]);
+    }
+    Ok(())
+}
+
 impl Game<'_> {
     pub(super) fn save_title_options(&mut self) {
         if let Some(title) = &self.title
@@ -713,21 +735,12 @@ impl Game<'_> {
     }
     #[cfg(target_os = "horizon")]
     pub(in crate::game) fn apply_switch_resolution(&mut self) -> Result<()> {
-        let size = horizon_client::settings::switch_resolution(&self.settings.file);
-        let Some(renderer) = &mut self.renderer else {
-            return Ok(());
-        };
-        if self.options.offscreen || size == [renderer.config.width, renderer.config.height] {
+        if self.options.offscreen {
             return Ok(());
         }
-        // Keep the last working mode on disk until the driver accepts the new one.
-        let key = "switchResolution";
-        let previous = i32::from(renderer.config.height == 1080);
-        self.settings.file.set(key, horizon_client::options_file::V::Int(previous));
-        self.settings.save(&Self::options_path());
-        if renderer.set_switch_resolution(size)? {
-            self.settings.file.set(key, horizon_client::options_file::V::Int(i32::from(size[1] == 1080)));
-            self.settings.save(&Self::options_path());
+        if let Some(renderer) = &mut self.renderer {
+            apply_switch_framebuffer(renderer, &mut self.settings)?;
+            self.notify_window_resize();
         }
         Ok(())
     }
@@ -828,12 +841,19 @@ impl Game<'_> {
             return;
         }
         let limit = self.framerate_limit();
+        #[cfg(target_os = "horizon")]
+        if self.renderer.as_ref().is_some_and(|renderer| renderer.display_paces_frames(limit)) {
+            return;
+        }
         match self.settings.horizon.pacing {
             horizon_client::graphics::Pacing::Precise => {
                 horizon_client::window::end_frame(&mut self.limiter, limit, &mut self.frame_clock)
             }
             horizon_client::graphics::Pacing::Efficient => {
                 let mut clock = horizon_client::window::SleepingClock(self.frame_clock);
+                #[cfg(target_os = "horizon")]
+                horizon_client::window::end_frame(&mut self.limiter, limit, &mut clock);
+                #[cfg(not(target_os = "horizon"))]
                 horizon_client::window::end_frame_on_grid(&mut self.limiter, limit, &mut clock);
             }
         }

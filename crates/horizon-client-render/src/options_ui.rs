@@ -253,7 +253,7 @@ impl Opt {
             Opt::Vsync => "options.vsync",
             Opt::Fullscreen => "options.fullscreen",
             #[cfg(target_os = "horizon")]
-            Opt::SwitchResolution => "horizon.options.switch_resolution",
+            Opt::SwitchResolution => "Resolution",
             Opt::ExclusiveFullscreen => "options.exclusiveFullscreen",
             Opt::ExclusiveMode => "options.fullscreen.exclusive.mode",
             Opt::GraphicsBackend => "options.graphicsApi",
