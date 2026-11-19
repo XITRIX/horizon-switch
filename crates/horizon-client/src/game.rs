@@ -11089,9 +11089,13 @@ pub(crate) fn run_with(
         && options.frames.is_none()
         && options.world_frames.is_none()
         && horizon_client::auth::current().is_none()
-        && !switch_login::choose_profile()
     {
-        return Ok(());
+        log::info!("Horizon: opening the Switch profile picker");
+        if !switch_login::choose_profile() {
+            log::info!("Horizon: exited the Switch profile picker");
+            return Ok(());
+        }
+        log::info!("Horizon: Switch profile selected");
     }
     options.mods.native = Arc::new(native);
     if options.execution_role == execution_role::ExecutionRole::DedicatedServer

@@ -237,6 +237,8 @@ pub fn start<G>(
     }
     install_client_hooks();
     raise_open_file_limit();
+    #[cfg(target_os = "horizon")]
+    log::info!("Horizon: entering the Switch game loop");
     if let Err(error) = game::run_with(options, native) {
         // A bad command line is the caller's mistake, not a crash: no report.
         let missing_mods = game::dedicated::is_missing_mods_refusal(error.as_ref());
