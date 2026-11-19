@@ -159,7 +159,8 @@ impl UiResources {
         // The title screen waits for both: the panorama's six faces decode
         // beside the atlas.
         std::thread::scope(|scope| {
-            let panorama = named_scope(scope, "panorama", || {
+            let parallel = !cfg!(target_os = "horizon");
+            let panorama = resource_load::Step::spawn(scope, parallel, "panorama", || {
                 startup::time("ui.panorama", || {
                     horizon_client::gfx::panorama::Faces::load(root, root)
                 })
@@ -168,9 +169,7 @@ impl UiResources {
             let atlas = startup::time("ui.atlas", || {
                 HudAtlas::build_over_with_image(root, root, mod_image)
             });
-            let panorama = panorama
-                .join()
-                .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+            let panorama = panorama.join();
             Ok(Self {
                 atlas: atlas?,
                 panorama: Arc::new(panorama),

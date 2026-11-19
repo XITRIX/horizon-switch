@@ -47,6 +47,41 @@ impl Progress {
     }
 }
 
+/// Keep the native console on the window until the startup resources are ready. The
+/// worker does CPU work only, so the window can go straight to the title renderer.
+#[cfg(target_os = "horizon")]
+pub(super) fn with_switch_loading_console(
+    progress: &Progress,
+    load: impl FnOnce() -> Result<Loaded> + Send,
+) -> Result<Option<Loaded>> {
+    let mut console = horizon_nx::console::Console::open();
+    std::thread::scope(|scope| {
+        let worker = horizon_guest_stack::builder()
+            .name("resource-loader".into())
+            .spawn_scoped(scope, move || load().map_err(|error| error.to_string()))?;
+        let mut displayed = None;
+        while !worker.is_finished() {
+            let stage = progress.value.load(Ordering::Relaxed);
+            let text = if displayed == Some(stage) {
+                String::new()
+            } else {
+                displayed = Some(stage);
+                let label = progress.lines[stage as usize];
+                let percent = stage as usize * 100 / (progress.lines.len() - 1);
+                log::info!("Horizon: startup resources {percent}% ({label})");
+                format!("\x1b[2J\x1b[2;5HHorizon\x1b[4;5H{label}  {percent}%")
+            };
+            if !console.show(&text) {
+                return Ok(None);
+            }
+            std::thread::sleep(Duration::from_millis(33));
+        }
+        let loaded = worker.join().map_err(|_| "startup resource loader panicked")??;
+        log::info!("Horizon: startup resources ready; opening the game window");
+        Ok(Some(loaded))
+    })
+}
+
 /// Harness and dedicated runs keep the fully-synchronous startup so their
 /// output stays byte-identical; only an ordinary launch shows the window first.
 pub(super) fn synchronous_startup(options: &Options) -> bool {
@@ -594,7 +629,9 @@ pub(super) fn load_resources(
     // bundle's core tables from the same root (`load_core`). A pack failure
     // in either starts both again with the game's own resources
     // (Minecraft.rollbackResourcePacks).
-    let parallel = threads > 1;
+    // Switch startup uses one loader thread. Keep the worker setting for
+    // chunk generation and meshing after launch.
+    let parallel = threads > 1 && !cfg!(target_os = "horizon");
     let mut offer = |ui: UiResources, root: &std::path::Path| {
         if menu {
             log::info!(
